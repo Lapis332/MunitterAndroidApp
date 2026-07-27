@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="munitter_background">#24211E</color>
+    <color name="munitter_icon">#FFF8F2</color>
+    <color name="munitter_accent">#D8B4A0</color>
+</resources>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="loading">むにったーを読み込んでいます</string>
+    <string name="retry">再読み込み</string>
+    <string name="error_offline_title">インターネットに接続できません</string>
+    <string name="error_offline_message">接続を確認してから、もう一度お試しください。</string>
+    <string name="error_dns_title">サーバーを見つけられません</string>
+    <string name="error_dns_message">DNSまたはネットワークの状態を確認してください。</string>
+    <string name="error_timeout_title">接続がタイムアウトしました</string>
+    <string name="error_timeout_message">通信が安定してから、もう一度お試しください。</string>
+    <string name="error_tls_title">安全な接続を確認できません</string>
+    <string name="error_tls_message">証明書エラーのため接続を中止しました。続行はできません。</string>
+    <string name="error_security_title">安全でないページをブロックしました</string>
+    <string name="error_security_message">Android System WebViewの安全確認により、このページへの移動を中止しました。</string>
+    <string name="error_server_title">サーバーで問題が発生しています</string>
+    <string name="error_server_message">しばらく待ってから、もう一度お試しください。</string>
+    <string name="error_webview_title">WebViewを利用できません</string>
+    <string name="error_webview_message">Android System WebViewまたはChromeを更新・有効化してください。</string>
+    <string name="error_generic_title">ページを表示できません</string>
+    <string name="error_generic_message">通信状態を確認して、もう一度お試しください。</string>
+    <string name="unsafe_link">安全を確認できないリンクは開けませんでした。</string>
+    <string name="no_external_app">このリンクを開けるアプリがありません。</string>
+    <string name="file_chooser_title">アップロード方法を選択</string>
+    <string name="choose_media">写真・動画を選択</string>
+    <string name="choose_files">ファイルを選択</string>
+    <string name="take_photo">写真を撮影</string>
+    <string name="record_video">動画を撮影</string>
+    <string name="cancel">キャンセル</string>
+    <string name="download_complete">ダウンロードが完了しました。</string>
+    <string name="download_failed">ダウンロードできませんでした。</string>
+</resources>

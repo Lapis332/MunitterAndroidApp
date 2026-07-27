@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+    <path
+        android:fillColor="@color/munitter_icon"
+        android:pathData="M18,20C12.5,20 8,24.5 8,30V61C8,66.5 12.5,71 18,71H31L45,84V71H78C83.5,71 88,66.5 88,61V30C88,24.5 83.5,20 78,20H18Z" />
+    <path
+        android:fillColor="@color/munitter_background"
+        android:pathData="M27,38H35V55H27ZM44,38H52V55H44ZM61,38H69V55H61Z" />
+</vector>
