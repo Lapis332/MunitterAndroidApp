@@ -145,14 +145,16 @@ try {
     $deviceLines = @($devices.Output | Where-Object { $_ -match "^\S+\s+device" })
     $matched = @()
     foreach ($line in $deviceLines) {
-        if ($line -notmatch "^([\w\.-]+)\s+device\b") { continue }
-        $serialCandidate = $Matches[1]
-        if ($line -match "model:([^ ]+)" -and $line -match "device:([^ ]+)") {
-            $model = $Matches[1]
-            if ($line -match "device:([^ ]+)") { $deviceName = $Matches[1] }
-        } else {
+        $serialMatch = [regex]::Match($line, "^(\S+)\s+device\b")
+        if (-not $serialMatch.Success) { continue }
+        $serialCandidate = $serialMatch.Groups[1].Value
+        $modelMatch = [regex]::Match($line, "model:([^\s]+)")
+        $deviceMatch = [regex]::Match($line, "\bdevice:([^\s]+)")
+        if (-not ($modelMatch.Success -and $deviceMatch.Success)) {
             continue
         }
+        $model = $modelMatch.Groups[1].Value
+        $deviceName = $deviceMatch.Groups[1].Value
         if ($model -eq $expectedDeviceModel -and $deviceName -eq $expectedDeviceCode) {
             $matched += [pscustomobject]@{
                 Serial = $serialCandidate
@@ -247,7 +249,8 @@ try {
         Write-Host ""
         Write-Host "===== Install ====="
         $install = Invoke-ADB -Adb $resolvedAdb -Arguments @("-s", $targetSerial, "install", "-r", $apkPath)
-        if ($install.Output -notmatch "Success") {
+        $installOutput = if ($install.Output -is [string]) { $install.Output } else { ($install.Output -join "`n") }
+        if (-not ($installOutput -match "Success") -or ($installOutput -match "Failure")) {
             Fail-Script -Step "Install" -ExitCode 7 -Reason "Install failed." -Evidence @($install.Output)
         }
         Write-StepResult -Title "Install" -Value "PASS (update)"
@@ -267,13 +270,14 @@ try {
     $startArgs = @("-s", $targetSerial, "shell", "am", "start", "-W", "-n", $launcher)
     $start = Invoke-ADB -Adb $resolvedAdb -Arguments $startArgs
     $statusLine = ($start.Output | Select-String "Status:")
+    $activityLine = ($start.Output | Select-String "Activity:")
     $launchStateLine = ($start.Output | Select-String "LaunchState:")
     $totalTimeLine = ($start.Output | Select-String "TotalTime:")
     $waitTimeLine = ($start.Output | Select-Object | Select-String "WaitTime:")
-    if ($statusLine.Count -eq 0 -or $start.Output -notmatch "ComponentInfo") {
+    if ($statusLine.Count -eq 0 -or $activityLine.Count -eq 0) {
         Fail-Script -Step "Cold launch" -ExitCode 9 -Reason "am start did not return expected output." -Evidence @($start.Output)
     }
-    if (($statusLine | Select-Object -ExpandProperty Line) -notmatch "ok") {
+    if (($statusLine | Select-Object -ExpandProperty Line) -notmatch "(?i)\bok\b") {
         Fail-Script -Step "Cold launch" -ExitCode 9 -Reason "Launch status is not ok." -Evidence @($statusLine | ForEach-Object { $_.Line })
     }
     Write-Host ($statusLine | ForEach-Object { $_.Line })
@@ -288,21 +292,23 @@ try {
     $fgConfirmed = $false
     $procPid = ""
     while ((Get-Date) -lt $deadline) {
-        $activity = (& $resolvedAdb -s $targetSerial shell "dumpsys", "activity")
-        $window = (& $resolvedAdb -s $targetSerial shell "dumpsys", "window", "windows")
-        $isFocus = $window -join "`n" | Select-String "mCurrentFocus=Window.*$([regex]::Escape($expectedAppId))" | Select-Object -First 1
-        $isTopResumed = $activity -join "`n" | Select-String "topResumedActivity=.*$([regex]::Escape($expectedAppId))" | Select-Object -First 1
-        $pid = (& $resolvedAdb -s $targetSerial shell "pidof", $expectedAppId) -join ""
-        if ($pid -match "^\d+$") {
-            $procPid = $pid
-            if ($isFocus -and $isTopResumed) {
+        $activity = (Invoke-ADB -Adb $resolvedAdb -Arguments @("-s", $targetSerial, "shell", "dumpsys", "activity")).Output
+        $window = (Invoke-ADB -Adb $resolvedAdb -Arguments @("-s", $targetSerial, "shell", "dumpsys", "window", "windows")).Output
+        $activityText = $activity -join "`n"
+        $windowText = $window -join "`n"
+        $isTopResumed = $activityText | Select-String "topResumedActivity=.*$([regex]::Escape($expectedAppId))" | Select-Object -First 1
+        $isWindowForeground = $windowText | Select-String "$([regex]::Escape($expectedAppId))" | Select-Object -First 1
+        $appPid = ((Invoke-ADB -Adb $resolvedAdb -Arguments @("-s", $targetSerial, "shell", "pidof", $expectedAppId)).Output -join "").Trim()
+        if ($appPid -match "^\d+$") {
+            $procPid = $appPid
+            if ($isTopResumed -and $isWindowForeground) {
                 $fgConfirmed = $true
                 break
             }
         }
         Start-Sleep -Milliseconds 600
     }
-    $durationMs = [int][math]::Round((Get-Date - $startTime).TotalMilliseconds)
+    $durationMs = [int][math]::Round(((Get-Date) - $startTime).TotalMilliseconds)
     if (-not $fgConfirmed) {
         Fail-Script -Step "Foreground check" -ExitCode 10 -Reason "App not confirmed foreground within timeout." -Evidence @("timeoutMs=$durationMs", "pid=$procPid")
     }
