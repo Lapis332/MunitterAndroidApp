@@ -1,12 +1,10 @@
 package com.munitter.android.navigation
 
-import android.webkit.WebView
-
 class NavigationCoordinator(
     private val policy: NavigationPolicy,
     private val oauthState: OAuthNavigationState,
     private val externalNavigator: ExternalNavigator,
-    private val webViewProvider: () -> WebView?,
+    private val openInternalUrl: (String) -> Unit,
 ) {
     fun shouldOverrideMainFrame(
         rawUrl: String?,
@@ -42,7 +40,7 @@ class NavigationCoordinator(
         when (decision.target) {
             NavigationTarget.INTERNAL,
             NavigationTarget.OAUTH_IN_WEBVIEW,
-            -> decision.uri?.toString()?.let { webViewProvider()?.loadUrl(it) }
+            -> decision.uri?.toString()?.let { openInternalUrl(it) }
             NavigationTarget.EXTERNAL_BROWSER,
             NavigationTarget.SPECIAL_INTENT,
             -> externalNavigator.open(decision)

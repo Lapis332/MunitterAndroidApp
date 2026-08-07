@@ -23,6 +23,7 @@ android {
         vectorDrawables.useSupportLibrary = true
 
         buildConfigField("String", "APP_UA_TOKEN", "\"MunitterAndroid/0.1.0\"")
+        buildConfigField("String", "DEVELOPMENT_DEBUG_CLIENT_HEADER", "\"\"")
         buildConfigField("boolean", "ACCEPT_THIRD_PARTY_COOKIES", "false")
     }
 
@@ -37,6 +38,11 @@ android {
             buildConfigField("String", "BASE_URL", "\"https://dev.munitter.com/\"")
             buildConfigField("String", "INTERNAL_HOST", "\"dev.munitter.com\"")
             buildConfigField("boolean", "WEBVIEW_DEBUGGABLE", "true")
+            buildConfigField(
+                "String",
+                "DEVELOPMENT_DEBUG_CLIENT_HEADER",
+                "\"MunitterAndroid/0.1.0-development-debug\"",
+            )
         }
         create("production") {
             dimension = "environment"

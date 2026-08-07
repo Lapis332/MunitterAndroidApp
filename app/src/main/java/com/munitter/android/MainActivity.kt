@@ -68,13 +68,13 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         val externalNavigator = ExternalNavigator(
             activity = this,
             navigationPolicy = navigationPolicy,
-            loadInternalUrl = { url -> webView?.loadUrl(url) },
+            loadInternalUrl = { url -> loadUrlWithDebugHeaders(url) },
         )
         navigationCoordinator = NavigationCoordinator(
             policy = navigationPolicy,
             oauthState = oauthState,
             externalNavigator = externalNavigator,
-            webViewProvider = { webView },
+            openInternalUrl = { url -> loadUrlWithDebugHeaders(url) },
         )
         fullscreen = FullscreenMediaController(this) { webView }
 
@@ -122,7 +122,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
                 ?.getBundle(STATE_WEBVIEW)
                 ?.let(candidate::restoreState) != null
             if (!restored) {
-                candidate.loadUrl(resolveLaunchUrl(intent?.dataString))
+                loadUrlWithDebugHeaders(resolveLaunchUrl(intent?.dataString))
             }
         }
     }
@@ -133,7 +133,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         val requested = intent.dataString ?: return
         val decision = navigationPolicy.classify(requested, oauthState.isInProgress)
         if (decision.target == NavigationTarget.INTERNAL) {
-            webView?.loadUrl(decision.uri.toString())
+            loadUrlWithDebugHeaders(decision.uri.toString())
         }
     }
 
@@ -261,6 +261,32 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         } else {
             BuildConfig.BASE_URL
         }
+    }
+
+    private fun loadUrlWithDebugHeaders(rawUrl: String?) {
+        val activeWebView = webView ?: return
+        if (rawUrl.isNullOrBlank()) {
+            return
+        }
+
+        val headers = debugClientHeaders()
+        if (headers.isEmpty()) {
+            activeWebView.loadUrl(rawUrl)
+            return
+        }
+
+        activeWebView.loadUrl(rawUrl, headers)
+    }
+
+    private fun debugClientHeaders(): Map<String, String> {
+        if (!BuildConfig.DEBUG || !BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)) {
+            return emptyMap()
+        }
+        if (BuildConfig.DEVELOPMENT_DEBUG_CLIENT_HEADER.isBlank()) {
+            return emptyMap()
+        }
+
+        return mapOf("X-Munitter-Client" to BuildConfig.DEVELOPMENT_DEBUG_CLIENT_HEADER)
     }
 
     companion object {
