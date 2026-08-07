@@ -188,7 +188,7 @@ try {
             $buildOutput | ForEach-Object { Write-Host $_ }
         }
         if ($buildExit -ne 0) {
-            $importantBuildErrors = $buildOutput | Select-String -Pattern "FAILURE:|BUILD FAILED|Exception|*Error*"
+            $importantBuildErrors = $buildOutput | Select-String -Pattern "FAILURE:|BUILD FAILED|Exception|Error"
             Fail-Script -Step "Build" -ExitCode 4 -Reason "gradlew assembleDevelopmentDebug failed." -Evidence @($importantBuildErrors | ForEach-Object { $_.Line })
         }
         Write-StepResult -Title "Build" -Value "OK"
