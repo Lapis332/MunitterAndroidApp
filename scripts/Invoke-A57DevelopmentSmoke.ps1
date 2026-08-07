@@ -220,9 +220,22 @@ try {
             }
         }
     } else {
-        $manifestXml = & $resolvedAdb "shell", "cat", "/data/data/$expectedAppId/../../../../system/app/fake" 2>$null
-        if ($manifestXml -match "dummy") { }
-        Write-Host "Warning: aapt2 not found; package/version fallback skipped."
+        Write-Host "Warning: aapt2 not found; merged manifest fallback used."
+        $mergedManifest = Join-Path $repoRoot "app\build\intermediates\merged_manifests\developmentDebug\AndroidManifest.xml"
+        if (Test-Path $mergedManifest) {
+            $manifestText = Get-Content -Path $mergedManifest -Raw
+            if ($manifestText -match 'package="([^"]+)"') {
+                $pkgName = $Matches[1]
+            }
+            if ($manifestText -match 'android:versionCode="(\d+)"') {
+                $versionCode = $Matches[1]
+            }
+            if ($manifestText -match 'android:versionName="([^"]+)"') {
+                $versionName = $Matches[1]
+            }
+        } else {
+            Write-Host "Warning: merged manifest fallback not found."
+        }
     }
     Write-StepResult -Title "APK package" -Value $pkgName
     Write-StepResult -Title "APK version" -Value "$versionName ($versionCode)"
