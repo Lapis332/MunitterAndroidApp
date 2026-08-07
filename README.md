@@ -63,6 +63,21 @@ $env:ANDROID_HOME = 'C:\Program Files (x86)\Android\android-sdk'
 
 署名前release APKはそのまま端末へインストールできません。正式署名を確定するまではDevelopment Debug APKを使用してください。
 
+## A57向け Development Smoke
+
+- 前提: A57 (`SM_A576Q` / `a57x` / product `a57xjpn`) にワイヤレスADBで接続済み
+- 実行: `.\scripts\Invoke-A57DevelopmentSmoke.ps1`
+- 対象: `developmentDebug` (`com.munitter.android.provisional.development.debug`)
+- 自動確認:
+  - `developmentDebug` APKビルド
+  - 対象端末の厳密マッチング
+  - `install -r`（更新インストール）
+  - cold launch、foreground確認、logcat保存
+  - screenshot保存
+  - crash/ANRの簡易判定
+- Production APKはインストールしないガード付き
+- 生成ログ/画像: `artifacts\device-test\`（`.gitignore` で除外）
+
 ## 実機へインストール
 
 端末側で開発者向けオプションとUSBデバッグを有効にし、接続許可を承認します。
