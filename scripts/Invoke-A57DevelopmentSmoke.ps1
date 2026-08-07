@@ -36,6 +36,92 @@ $apkPath = Join-Path $repoRoot $apkRelativePath
 $expectedDeviceModel = "SM_A576Q"
 $expectedDeviceCode = "a57x"
 
+function Ensure-JavaAvailability {
+    [CmdletBinding()]
+    param()
+
+    function Get-JavaMajor {
+        param([string]$JavaExecutable)
+        $javaVersionLine = & $JavaExecutable "-XshowSettings:properties" "-version" 2>&1 | Select-String "java.version" | Select-Object -First 1
+        if (-not $javaVersionLine) {
+            $javaVersionLine = & $JavaExecutable "-version" 2>&1 | Select-Object -First 1
+        }
+        if ($javaVersionLine -and ($javaVersionLine -match 'version\s*=\s*(\d+)' -or $javaVersionLine -match 'version\s*\"(\d+)')) {
+            if ($Matches[1]) { return [int]$Matches[1] }
+        }
+        return $null
+    }
+
+    $currentJava = Get-Command java -ErrorAction SilentlyContinue
+    if ($currentJava) {
+        $existingMajor = Get-JavaMajor -JavaExecutable $currentJava.Source
+        if ($null -ne $existingMajor -and $existingMajor -ge 17 -and $existingMajor -le 21) {
+            Write-StepResult -Title "JAVA" -Value $currentJava.Source
+            return
+        }
+        Write-Host "[WARN] PATH java is not in supported range: major=$existingMajor"
+    }
+
+    $javaHomes = @()
+    if ($env:JAVA_HOME -and -not [string]::IsNullOrWhiteSpace($env:JAVA_HOME)) { $javaHomes += $env:JAVA_HOME.Trim() }
+    if ($env:STUDIO_JDK -and -not [string]::IsNullOrWhiteSpace($env:STUDIO_JDK)) { $javaHomes += $env:STUDIO_JDK.Trim() }
+    $javaHomes += @(
+        "$env:LOCALAPPDATA\Android\Android Studio\jbr",
+        "${env:ProgramFiles}\Android\Android Studio\jbr",
+        "${env:ProgramFiles(x86)}\Android\Android Studio\jbr",
+        "$env:LOCALAPPDATA\Programs\Android\Android Studio\jbr",
+        "${env:ProgramFiles}\Android\Android Studio\jre",
+        "${env:ProgramFiles(x86)}\Android\Android Studio\jre"
+    )
+
+    $openJdkRoot = "C:\Program Files\Android\openjdk"
+    if (Test-Path $openJdkRoot) {
+        Get-ChildItem -Path $openJdkRoot -Directory -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path (Join-Path $_.FullName "bin\java.exe") } |
+            Sort-Object -Property Name -Descending |
+            ForEach-Object { $javaHomes += $_.FullName }
+    }
+
+    $candidates = @()
+    foreach ($candidate in $javaHomes) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+        if (-not (Test-Path $candidate)) { continue }
+        $javaExe = Join-Path $candidate "bin\java.exe"
+        if (Test-Path $javaExe) {
+            $major = Get-JavaMajor -JavaExecutable $javaExe
+            $candidates += [pscustomobject]@{
+                Home = $candidate
+                Major = if ($null -eq $major) { 0 } else { [int]$major }
+                Java = $javaExe
+            }
+        }
+    }
+
+    $compatible = $candidates | Where-Object { $_.Major -ge 17 -and $_.Major -le 21 } | Sort-Object -Property Major -Descending
+    $selected = if ($compatible.Count -gt 0) { $compatible[0] } else { $candidates | Sort-Object -Property Major -Descending | Select-Object -First 1 }
+
+    if ($selected) {
+        $env:JAVA_HOME = $selected.Home
+        if ($env:Path -notmatch [regex]::Escape($selected.Home + "\bin")) {
+            $env:Path = "$($selected.Home)\bin;$env:Path"
+        }
+
+        if (Get-Command java -ErrorAction SilentlyContinue) {
+            Write-StepResult -Title "JAVA" -Value $selected.Java
+            if ($compatible.Count -eq 0 -and $selected.Major -gt 21) {
+                Write-Host "[WARN] No JAVA 17-21 found; using $($selected.Major)"
+            }
+            return
+        }
+    }
+
+    Fail-Script -Step "JAVA" -ExitCode 2 -Reason "Java runtime was not found and could not auto-resolve JAVA_HOME from known paths." -Evidence @(
+        "checked JAVA_HOME",
+        "checked PATH",
+        "checked Android Studio JBR/JRE"
+    )
+}
+
 function Write-StepResult {
     param([string]$Title, [string]$Value, [string]$Status = "PASS")
     Write-Host ("[{0}] {1}: {2}" -f $Status, $Title, $Value)
@@ -177,6 +263,8 @@ try {
         $found = $matched | ForEach-Object { $_.Serial }
         Fail-Script -Step "Device filter" -ExitCode 3 -Reason "More than one matching device found; ambiguous." -Evidence @($found)
     }
+
+    Ensure-JavaAvailability
 
     $targetSerial = $matched[0].Serial
     Write-StepResult -Title "Target serial" -Value $targetSerial
