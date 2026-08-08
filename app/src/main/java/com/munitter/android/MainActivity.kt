@@ -33,6 +33,14 @@ import com.munitter.android.web.WebViewConfigurator
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.io.BufferedInputStream
+import java.net.HttpURLConnection
+import java.net.URL
 
 class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     private var webView: WebView? = null
@@ -122,7 +130,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
                 ?.getBundle(STATE_WEBVIEW)
                 ?.let(candidate::restoreState) != null
             if (!restored) {
-                loadUrlWithDebugHeaders(resolveLaunchUrl(intent?.dataString))
+                attemptDevelopmentDebugBootstrap(resolveLaunchUrl(intent?.dataString))
             }
         }
     }
@@ -278,6 +286,121 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         activeWebView.loadUrl(rawUrl, headers)
     }
 
+    private fun attemptDevelopmentDebugBootstrap(rawUrl: String?) {
+        val targetUrl = rawUrl ?: BuildConfig.BASE_URL
+        if (!canAttemptDevelopmentDebugBootstrap(targetUrl)) {
+            loadUrlWithDebugHeaders(targetUrl)
+            return
+        }
+
+        lifecycleScope.launch {
+            val bootstrapped = runCatching { performDevelopmentDebugBootstrap(targetUrl) }.getOrDefault(false)
+            if (!bootstrapped) {
+                android.util.Log.w(
+                    TAG,
+                    "Development debug bootstrap failed; proceeding with normal login flow.",
+                )
+            }
+
+            withContext(Dispatchers.Main) {
+                loadUrlWithDebugHeaders(targetUrl)
+            }
+        }
+    }
+
+    private fun canAttemptDevelopmentDebugBootstrap(rawUrl: String): Boolean {
+        if (!BuildConfig.DEBUG ||
+            !BuildConfig.BUILD_TYPE.equals("debug", ignoreCase = true) ||
+            !BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true) ||
+            BuildConfig.DEVELOPMENT_DEBUG_CLIENT_HEADER.isBlank()) {
+            return false
+        }
+
+        val host = runCatching { android.net.Uri.parse(rawUrl).host }.getOrNull()
+        return host != null && host.equals(BuildConfig.INTERNAL_HOST, ignoreCase = true)
+    }
+
+    private suspend fun performDevelopmentDebugBootstrap(baseUrl: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val endpointBase = baseUrl.trimEnd('/')
+            val bootstrapEndpoint = "$endpointBase/internal/dev-test-auth/bootstrap"
+
+            val bootstrapResponse = postDevelopmentDebugRequest(
+                bootstrapEndpoint,
+            ) ?: return@withContext false
+
+            if (bootstrapResponse.statusCode != HttpURLConnection.HTTP_OK) {
+                return@withContext false
+            }
+
+            val hasSuccess = runCatching {
+                JSONObject(bootstrapResponse.body).optBoolean("success", false)
+            }.getOrDefault(false)
+            if (!hasSuccess) {
+                return@withContext false
+            }
+
+            applyBootstrapCookies(baseUrl, bootstrapResponse.setCookieHeaders)
+        }
+
+    private fun applyBootstrapCookies(baseUrl: String, setCookieHeaders: List<String>): Boolean {
+        val cookieManager = CookieManager.getInstance()
+        val base = baseUrl.trimEnd('/')
+        var wroteCookie = false
+
+        for (cookie in setCookieHeaders) {
+            if (cookie.isBlank()) {
+                continue
+            }
+
+            cookieManager.setCookie(base, cookie)
+            wroteCookie = true
+        }
+
+        if (wroteCookie) {
+            cookieManager.flush()
+        }
+
+        return wroteCookie
+    }
+
+    private fun postDevelopmentDebugRequest(
+        endpointUrl: String,
+    ): DevelopmentDebugBootstrapHttpResponse? {
+        val connection = runCatching { URL(endpointUrl).openConnection() as HttpURLConnection }
+            .getOrElse { return null }
+
+        return try {
+            connection.requestMethod = "POST"
+            connection.connectTimeout = DEVELOPMENT_DEBUG_BOOTSTRAP_TIMEOUT_MS
+            connection.readTimeout = DEVELOPMENT_DEBUG_BOOTSTRAP_TIMEOUT_MS
+            connection.doOutput = false
+            connection.setRequestProperty("Accept", "application/json")
+            connection.setRequestProperty("X-Munitter-Client", BuildConfig.DEVELOPMENT_DEBUG_CLIENT_HEADER)
+
+            val status = connection.responseCode
+            val responseStream = if (status >= 200 && status < 300) {
+                connection.inputStream
+            } else {
+                connection.errorStream
+            }
+            val responseBody = responseStream
+                ?.let { BufferedInputStream(it) }
+                ?.readBytes()
+                ?.toString(Charsets.UTF_8)
+                ?: ""
+            DevelopmentDebugBootstrapHttpResponse(
+                statusCode = status,
+                body = responseBody,
+                setCookieHeaders = connection.headerFields["Set-Cookie"]?.filterNotNull() ?: emptyList(),
+            )
+        } catch (ex: Exception) {
+            null
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     private fun debugClientHeaders(): Map<String, String> {
         if (!BuildConfig.DEBUG || !BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)) {
             return emptyMap()
@@ -292,5 +415,13 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     companion object {
         private const val STATE_WEBVIEW = "munitter.webview.state"
         private const val STATE_OAUTH_IN_PROGRESS = "munitter.oauth.in_progress"
+        private const val DEVELOPMENT_DEBUG_BOOTSTRAP_TIMEOUT_MS = 8_000
+        private const val TAG = "MainActivity"
     }
+
+    private data class DevelopmentDebugBootstrapHttpResponse(
+        val statusCode: Int,
+        val body: String,
+        val setCookieHeaders: List<String>,
+    )
 }
