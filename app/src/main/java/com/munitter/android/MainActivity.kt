@@ -1,6 +1,8 @@
 package com.munitter.android
 
 import android.graphics.Color
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.os.Bundle
 import android.view.ViewGroup
 import android.webkit.CookieManager
@@ -45,6 +47,8 @@ import java.net.URL
 class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     private var webView: WebView? = null
     private var uiState by mutableStateOf(WebUiState())
+    private var navigationHeaderSnapshot by mutableStateOf<Bitmap?>(null)
+    private var lastVisibleHeaderSnapshot: Bitmap? = null
     private lateinit var navigationPolicy: NavigationPolicy
     private lateinit var oauthState: OAuthNavigationState
     private lateinit var navigationCoordinator: NavigationCoordinator
@@ -119,6 +123,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
                 MunitterScreen(
                     webView = webView,
                     state = uiState,
+                    navigationHeaderSnapshot = navigationHeaderSnapshot,
                     onRetry = ::retry,
                     onBack = ::handleBack,
                 )
@@ -188,7 +193,12 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         super.onDestroy()
     }
 
-    override fun onLoadingStarted() {
+    override fun onLoadingStarted(webView: WebView) {
+        navigationHeaderSnapshot = if (uiState.hasVisibleContent) {
+            lastVisibleHeaderSnapshot
+        } else {
+            null
+        }
         uiState = uiState.copy(
             isLoading = true,
             progress = 0,
@@ -196,7 +206,11 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         )
     }
 
-    override fun onContentVisible() {
+    override fun onContentVisible(webView: WebView) {
+        navigationHeaderSnapshot = null
+        webView.post {
+            captureVisibleHeader(webView)?.let { lastVisibleHeaderSnapshot = it }
+        }
         uiState = uiState.copy(
             isLoading = false,
             hasVisibleContent = true,
@@ -204,7 +218,11 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         )
     }
 
-    override fun onPageFinished() {
+    override fun onPageFinished(webView: WebView) {
+        navigationHeaderSnapshot = null
+        webView.post {
+            captureVisibleHeader(webView)?.let { lastVisibleHeaderSnapshot = it }
+        }
         uiState = uiState.copy(
             isLoading = false,
             hasVisibleContent = true,
@@ -212,6 +230,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     }
 
     override fun onFailure(kind: WebFailureKind) {
+        navigationHeaderSnapshot = null
         uiState = uiState.copy(
             isLoading = false,
             hasVisibleContent = false,
@@ -220,6 +239,8 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     }
 
     override fun onRendererGone(webView: WebView) {
+        navigationHeaderSnapshot = null
+        lastVisibleHeaderSnapshot = null
         (webView.parent as? ViewGroup)?.removeView(webView)
         if (this.webView === webView) {
             this.webView = null
@@ -237,6 +258,21 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             progress = progress,
             isLoading = progress < 100 && !uiState.hasVisibleContent,
         )
+    }
+
+    private fun captureVisibleHeader(activeWebView: WebView): Bitmap? {
+        if (activeWebView.width <= 0 || activeWebView.height <= 0 || !activeWebView.isShown) {
+            return null
+        }
+
+        val headerHeight = (HEADER_SNAPSHOT_HEIGHT_DP * resources.displayMetrics.density)
+            .toInt()
+            .coerceIn(1, activeWebView.height)
+        return runCatching {
+            Bitmap.createBitmap(activeWebView.width, headerHeight, Bitmap.Config.ARGB_8888).also { bitmap ->
+                activeWebView.draw(Canvas(bitmap))
+            }
+        }.getOrNull()
     }
 
     private fun retry() {
@@ -416,6 +452,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         private const val STATE_WEBVIEW = "munitter.webview.state"
         private const val STATE_OAUTH_IN_PROGRESS = "munitter.oauth.in_progress"
         private const val DEVELOPMENT_DEBUG_BOOTSTRAP_TIMEOUT_MS = 8_000
+        private const val HEADER_SNAPSHOT_HEIGHT_DP = 56
         private const val TAG = "MainActivity"
     }
 

@@ -1,5 +1,6 @@
 package com.munitter.android.ui
 
+import android.graphics.Bitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -65,5 +66,24 @@ class MunitterScreenTest {
         composeRule.runOnIdle {
             assertEquals(1, retryCount.get())
         }
+    }
+
+    @Test
+    fun visibleContentKeepsCapturedHeaderAboveNavigationCommitGap() {
+        val snapshot = Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888)
+        composeRule.setContent {
+            MunitterTheme {
+                MunitterScreen(
+                    webView = null,
+                    state = WebUiState(hasVisibleContent = true),
+                    navigationHeaderSnapshot = snapshot,
+                    onRetry = {},
+                    onBack = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(NAVIGATION_HEADER_SNAPSHOT_TEST_TAG).assertIsDisplayed()
+        composeRule.onNodeWithTag(LOADING_PANEL_TEST_TAG).assertDoesNotExist()
     }
 }

@@ -74,12 +74,12 @@ class MunitterWebViewClient(
             callbacks.onFailure(WebFailureKind.SECURITY)
             return
         }
-        callbacks.onLoadingStarted()
+        callbacks.onLoadingStarted(view)
     }
 
     override fun onPageCommitVisible(view: WebView, url: String) {
         if (!mainFrameFailed) {
-            callbacks.onContentVisible()
+            callbacks.onContentVisible(view)
         }
     }
 
@@ -87,7 +87,7 @@ class MunitterWebViewClient(
         android.webkit.CookieManager.getInstance().flush()
         val uri = runCatching { java.net.URI(url.orEmpty()) }.getOrNull()
         oauthState.recordPageFinished(uri, internalHost)
-        callbacks.onPageFinished()
+        callbacks.onPageFinished(view)
     }
 
     override fun onReceivedError(
@@ -192,9 +192,9 @@ class MunitterWebViewClient(
         }.getOrNull()
 
     interface Callbacks {
-        fun onLoadingStarted()
-        fun onContentVisible()
-        fun onPageFinished()
+        fun onLoadingStarted(webView: WebView)
+        fun onContentVisible(webView: WebView)
+        fun onPageFinished(webView: WebView)
         fun onFailure(kind: WebFailureKind)
         fun onRendererGone(webView: WebView)
     }
