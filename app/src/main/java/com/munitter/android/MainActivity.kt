@@ -207,10 +207,6 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     }
 
     override fun onContentVisible(webView: WebView) {
-        navigationHeaderSnapshot = null
-        webView.post {
-            captureVisibleHeader(webView)?.let { lastVisibleHeaderSnapshot = it }
-        }
         uiState = uiState.copy(
             isLoading = false,
             hasVisibleContent = true,
@@ -219,10 +215,6 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     }
 
     override fun onPageFinished(webView: WebView) {
-        navigationHeaderSnapshot = null
-        webView.post {
-            captureVisibleHeader(webView)?.let { lastVisibleHeaderSnapshot = it }
-        }
         uiState = uiState.copy(
             isLoading = false,
             hasVisibleContent = true,
@@ -258,6 +250,13 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             progress = progress,
             isLoading = progress < 100 && !uiState.hasVisibleContent,
         )
+    }
+
+    override fun onHeaderPresentationReady(webView: WebView) {
+        navigationHeaderSnapshot = null
+        webView.post {
+            captureVisibleHeader(webView)?.let { lastVisibleHeaderSnapshot = it }
+        }
     }
 
     private fun captureVisibleHeader(activeWebView: WebView): Bitmap? {

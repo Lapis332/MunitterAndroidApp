@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.http.SslError
+import android.os.SystemClock
+import android.util.Log
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
 import android.webkit.WebResourceRequest
@@ -15,6 +17,8 @@ import androidx.webkit.WebViewClientCompat
 import androidx.webkit.WebViewFeature
 import com.munitter.android.navigation.NavigationCoordinator
 import com.munitter.android.navigation.OAuthNavigationState
+import org.json.JSONObject
+import org.json.JSONTokener
 import java.io.ByteArrayInputStream
 
 class MunitterWebViewClient(
@@ -26,6 +30,11 @@ class MunitterWebViewClient(
 ) : WebViewClientCompat() {
     private var mainFrameFailed = false
     private var activeMainFrameUrl: String? = null
+    private var headerProbeGeneration = 0
+    private var headerPresentedGeneration = -1
+    private var lastPresentedAvatarOwner = ""
+    private var lastPresentedAvatarSource = ""
+    private var navigationStartedAt = 0L
 
     override fun shouldOverrideUrlLoading(
         view: WebView,
@@ -66,6 +75,8 @@ class MunitterWebViewClient(
     }
 
     override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+        headerProbeGeneration += 1
+        navigationStartedAt = SystemClock.uptimeMillis()
         activeMainFrameUrl = url
         mainFrameFailed = false
         if (!navigationCoordinator.allowsMainFrameNetworkRequest(url)) {
@@ -79,7 +90,13 @@ class MunitterWebViewClient(
 
     override fun onPageCommitVisible(view: WebView, url: String) {
         if (!mainFrameFailed) {
+            Log.d(TAG, "Page commit visible generation=$headerProbeGeneration elapsedMs=${elapsedNavigationMs()}")
             callbacks.onContentVisible(view)
+            probeHeaderPresentation(
+                view = view,
+                generation = headerProbeGeneration,
+                deadline = SystemClock.uptimeMillis() + HEADER_PRESENTATION_FAILSAFE_MS,
+            )
         }
     }
 
@@ -88,6 +105,11 @@ class MunitterWebViewClient(
         val uri = runCatching { java.net.URI(url.orEmpty()) }.getOrNull()
         oauthState.recordPageFinished(uri, internalHost)
         callbacks.onPageFinished(view)
+        probeHeaderPresentation(
+            view = view,
+            generation = headerProbeGeneration,
+            deadline = SystemClock.uptimeMillis() + HEADER_PRESENTATION_FAILSAFE_MS,
+        )
     }
 
     override fun onReceivedError(
@@ -170,6 +192,76 @@ class MunitterWebViewClient(
             capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
 
+    private fun probeHeaderPresentation(
+        view: WebView,
+        generation: Int,
+        deadline: Long,
+    ) {
+        if (generation != headerProbeGeneration || generation == headerPresentedGeneration || mainFrameFailed) return
+
+        view.evaluateJavascript(HEADER_PRESENTATION_SCRIPT) { rawResult ->
+            if (generation != headerProbeGeneration || generation == headerPresentedGeneration || mainFrameFailed) return@evaluateJavascript
+
+            val result = parseHeaderPresentation(rawResult)
+            val ownerChanged = lastPresentedAvatarOwner.isNotEmpty() &&
+                result.owner.isNotEmpty() &&
+                result.owner != lastPresentedAvatarOwner
+            if (HeaderPresentationReleasePolicy.shouldRelease(
+                    previousOwner = lastPresentedAvatarOwner,
+                    currentOwner = result.owner,
+                    state = result.state,
+                    timedOut = false,
+                )) {
+                if (result.state == STATE_READY || result.state == STATE_FORMAL_FALLBACK) {
+                    lastPresentedAvatarOwner = result.owner
+                    lastPresentedAvatarSource = result.source
+                } else if (ownerChanged) {
+                    lastPresentedAvatarOwner = result.owner
+                    lastPresentedAvatarSource = result.source
+                }
+                headerPresentedGeneration = generation
+                Log.d(
+                    TAG,
+                    "Header presentation ready generation=$generation state=${result.state} " +
+                        "ownerChanged=$ownerChanged elapsedMs=${elapsedNavigationMs()}",
+                )
+                callbacks.onHeaderPresentationReady(view)
+                return@evaluateJavascript
+            }
+
+            if (HeaderPresentationReleasePolicy.shouldRelease(
+                    previousOwner = lastPresentedAvatarOwner,
+                    currentOwner = result.owner,
+                    state = result.state,
+                    timedOut = SystemClock.uptimeMillis() >= deadline,
+                )) {
+                Log.w(TAG, "Header avatar readiness failsafe released generation=$generation state=${result.state}")
+                headerPresentedGeneration = generation
+                callbacks.onHeaderPresentationReady(view)
+                return@evaluateJavascript
+            }
+
+            view.postDelayed(
+                { probeHeaderPresentation(view, generation, deadline) },
+                HEADER_PRESENTATION_POLL_MS,
+            )
+        }
+    }
+
+    private fun parseHeaderPresentation(rawResult: String?): HeaderPresentationResult =
+        runCatching {
+            val jsonText = JSONTokener(rawResult.orEmpty()).nextValue() as? String ?: "{}"
+            val json = JSONObject(jsonText)
+            HeaderPresentationResult(
+                state = json.optString("state", STATE_PENDING),
+                owner = json.optString("owner", ""),
+                source = json.optString("source", ""),
+            )
+        }.getOrDefault(HeaderPresentationResult())
+
+    private fun elapsedNavigationMs(): Long =
+        (SystemClock.uptimeMillis() - navigationStartedAt).coerceAtLeast(0L)
+
     private fun isActiveMainFrameUrl(
         failingUrl: String?,
         currentWebViewUrl: String?,
@@ -195,7 +287,50 @@ class MunitterWebViewClient(
         fun onLoadingStarted(webView: WebView)
         fun onContentVisible(webView: WebView)
         fun onPageFinished(webView: WebView)
+        fun onHeaderPresentationReady(webView: WebView)
         fun onFailure(kind: WebFailureKind)
         fun onRendererGone(webView: WebView)
+    }
+
+
+    private data class HeaderPresentationResult(
+        val state: String = STATE_PENDING,
+        val owner: String = "",
+        val source: String = "",
+    )
+
+    companion object {
+        private const val TAG = "MunitterWebViewClient"
+        private const val HEADER_PRESENTATION_POLL_MS = 50L
+        private const val HEADER_PRESENTATION_FAILSAFE_MS = 5_000L
+        private const val STATE_PENDING = "pending"
+        private const val STATE_READY = "ready"
+        private const val STATE_FORMAL_FALLBACK = "formal-fallback"
+        private val HEADER_PRESENTATION_SCRIPT = """
+            (() => {
+              const header = document.querySelector('[data-primary-page-header]');
+              if (!header) return JSON.stringify({ state: 'pending' });
+              const avatar = header.querySelector('[data-primary-header-avatar]');
+              if (!avatar) return JSON.stringify({ state: 'no-avatar' });
+              const owner = avatar.getAttribute('data-avatar-owner-id') || '';
+              const source = avatar.getAttribute('data-avatar-image-id') || '';
+              const image = avatar.querySelector('img[data-avatar-image]');
+              if (!image || !source || image.dataset.avatarLoadFailed === 'true') {
+                return JSON.stringify({ state: 'formal-fallback', owner, source });
+              }
+              if (image.complete && image.naturalWidth > 0 && image.dataset.avatarDecodeStarted !== 'true') {
+                image.dataset.avatarDecodeStarted = 'true';
+                image.decode().then(() => requestAnimationFrame(() => {
+                  image.dataset.avatarPresentationReady = 'true';
+                })).catch(() => {
+                  image.dataset.avatarDecodeFailed = 'true';
+                });
+              }
+              const visible = image.dataset.avatarPresentationReady === 'true'
+                && getComputedStyle(image).visibility !== 'hidden'
+                && image.getClientRects().length > 0;
+              return JSON.stringify({ state: visible ? 'ready' : 'pending', owner, source });
+            })()
+        """.trimIndent()
     }
 }
