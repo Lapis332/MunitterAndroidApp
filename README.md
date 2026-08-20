@@ -133,7 +133,8 @@ Web版変更時は、認証/Cookie、外部ホスト、ファイルinput、マ�
 ## 現時点の制約
 
 - App Linksは、正式Application ID・release署名SHA-256・`/.well-known/assetlinks.json`が未確定のため未実装です。
-- FCMはサーバー側の端末トークン関連付け、ログアウト解除、Web通知との重複防止が未設計のため未実装です。
+- Android OS通知は、既存の認証済みWeb通知APIを再利用するforeground同期（60秒）と、ネットワーク接続時のWorkManager同期（最短15分）で実装しています。FCMはサーバー側の端末トークン関連付け、ログアウト解除、Web通知との重複防止が未設計のため未実装です。
+- Android 13以降の通知権限は、認証済み画面が表示された自然なタイミングで一度だけ要求します。通知Channelは `munitter_notifications`、badge許可はChannel作成時に有効化します。
 - 実アカウントを使うメール/Xログイン、投稿、DM、Spacesマイク、バックグラウンド復帰、回転、低速通信は実機チェックリストで確認してください。
 - WebViewの `MediaRecorder` がSpacesのAAC/MP4を提供できるかは端末とSystem WebViewの版に依存します。
 - 本リポジトリ作成環境にはAndroid Studio、エミュレーター、接続済み端末がなかったため、Android実機での成功は主張していません。

@@ -36,6 +36,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
+import com.munitter.android.notification.MunitterNotificationCenter
+import com.munitter.android.notification.NotificationSyncEngine
+import com.munitter.android.notification.NotificationSyncScheduler
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -56,10 +61,15 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     private lateinit var permissions: WebPermissionCoordinator
     private lateinit var fullscreen: FullscreenMediaController
     private lateinit var downloads: SecureDownloadCoordinator
+    private lateinit var notificationCenter: MunitterNotificationCenter
+    private var notificationSyncJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
+
+        notificationCenter = MunitterNotificationCenter(this)
+        NotificationSyncScheduler.schedule(this)
 
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
@@ -163,9 +173,18 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     override fun onResume() {
         super.onResume()
         webView?.onResume()
+        notificationSyncJob?.cancel()
+        notificationSyncJob = lifecycleScope.launch {
+            while (true) {
+                NotificationSyncEngine(this@MainActivity).sync()
+                delay(FOREGROUND_NOTIFICATION_SYNC_INTERVAL_MS)
+            }
+        }
     }
 
     override fun onPause() {
+        notificationSyncJob?.cancel()
+        notificationSyncJob = null
         CookieManager.getInstance().flush()
         webView?.onPause()
         super.onPause()
@@ -219,6 +238,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             isLoading = false,
             hasVisibleContent = true,
         )
+        requestNotificationPermissionIfAppropriate(webView.url)
     }
 
     override fun onFailure(kind: WebFailureKind) {
@@ -447,11 +467,44 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         return mapOf("X-Munitter-Client" to BuildConfig.DEVELOPMENT_DEBUG_CLIENT_HEADER)
     }
 
+    private fun requestNotificationPermissionIfAppropriate(rawUrl: String?) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU ||
+            notificationCenter.hasNotificationPermission() ||
+            notificationCenter.permissionWasRequested() ||
+            rawUrl.isNullOrBlank()) {
+            return
+        }
+
+        val path = runCatching { android.net.Uri.parse(rawUrl).path.orEmpty() }.getOrDefault("")
+        if (path.isBlank() || path == "/" || path in LOGIN_OR_PUBLIC_PATHS) {
+            return
+        }
+
+        notificationCenter.markPermissionRequested()
+        requestPermissions(
+            arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+            NOTIFICATION_PERMISSION_REQUEST_CODE,
+        )
+    }
+
     companion object {
         private const val STATE_WEBVIEW = "munitter.webview.state"
         private const val STATE_OAUTH_IN_PROGRESS = "munitter.oauth.in_progress"
         private const val DEVELOPMENT_DEBUG_BOOTSTRAP_TIMEOUT_MS = 8_000
         private const val HEADER_SNAPSHOT_HEIGHT_DP = 56
+        private const val FOREGROUND_NOTIFICATION_SYNC_INTERVAL_MS = 60_000L
+        private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 4201
+        private val LOGIN_OR_PUBLIC_PATHS = setOf(
+            "/",
+            "/index",
+            "/login",
+            "/email/login",
+            "/email/register",
+            "/password/forgot",
+            "/terms",
+            "/privacy",
+            "/contact",
+        )
         private const val TAG = "MainActivity"
     }
 

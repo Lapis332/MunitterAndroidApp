@@ -56,13 +56,13 @@ Android 固有の CSS / JavaScript 分岐は増やさず、User-Agent の短い�
 - サードパーティ Cookie は既定で無効。Turnstile の実機結果に基づかず広げない。
 - Web 権限は既定拒否。信頼済み origin の音声要求だけを `RECORD_AUDIO` と二段階で許可し、WebRTC カメラと位置情報は拒否する。
 - Production ログに Cookie、token、認証ヘッダー、署名 URL、投稿・DM 内容を出さない。
-- JavaScript bridge は未導入。必要性と最小 API を実証してから脅威分析付きで追加する。
+- JavaScript bridge は未導入。通知はBridgeを新設せず、Webの既存認証済み通知APIをAndroidのforeground／WorkManager同期から再利用する。
 
 ## 戻る操作とライフサイクル
 
 Android の戻る操作は WebView 履歴がある場合に戻り、ない場合に Activity を終了する。Web 内モーダル、サイドバー、画像ビューアの閉じる処理は Web 実装との競合を A57 で確認する。画面回転、バックグラウンド復帰、プロセス再生成では、認証 Cookie を消さず、保留中の chooser callback を二重完了させない。
 
-Service Worker は Web の scope `/` を尊重するが、現状 fetch cache / push を持たないため、Android は独自オフラインキャッシュや通知連携を追加しない。SignalR も Web の `/hubs/dm`、`/hubs/spaces` と再接続をそのまま利用する。
+Service Worker は Web の scope `/` を尊重するが、現状 fetch cache / push を持たない。Androidは独自の通知サーバーやSignalR接続を追加せず、既存の `/Notifications?handler=Refresh/More` をCookie付きで同期し、標準NotificationChannel／badgeへ反映する。SignalRもWebの `/hubs/dm`、`/hubs/spaces` と再接続をそのまま利用する。
 
 ## ビルド境界
 
@@ -78,6 +78,7 @@ Development / Production の接続先、表示名、デバッグ可否はビル�
 - Development / Production URL、仮 Application ID、SDK 水準。
 - トップレベル遷移と HTTPS サブリソースを分ける方針。
 - X OAuth、ファイル chooser、信頼 origin のマイク権限に必要な境界。
+- 通知権限、`munitter_notifications` Channelのbadge許可、既読APIの状態に合わせたOS通知解除、通知タップのsingleTask内部URL遷移。
 
 ### 未確認
 

@@ -2,12 +2,13 @@
 
 ## 現在地
 
-初期版は、Web UI をそのまま表示する独立した Compose / WebView シェルに限定する。FCM、App Links、Play Store release signing は未導入であり、実機成功も未確認である。
+Web UI をそのまま表示する独立した Compose / WebView シェルを維持しつつ、Android OS通知は既存Web通知APIの認証Cookie同期で導入した。FCM、App Links、Play Store release signing は未導入であり、実機成功は端末接続後に確認する。
 
 確認済みの前提:
 
 - Application ID `com.munitter.android.provisional` は仮 ID。
 - Web Service Worker は scope `/` で、監査時点では fetch cache / push を持たない。
+- Android通知はforeground 60秒同期とWorkManager 15分周期同期で、通知Channelの標準badgeとWeb既読状態を再利用する。
 - X OAuth は Web セッションと PKCE に依存するため同じ WebView 内で完結させる。
 - App Links に必要な正式 package、最終署名証明書、サーバーの `assetlinks.json` は確定していない。
 

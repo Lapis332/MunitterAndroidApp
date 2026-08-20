@@ -83,6 +83,11 @@
 ## 6. 通知、外部遷移、特殊 URL
 
 - [ ] Web の通知画面を表示できる。
+- [ ] Android 13以降で通知権限が認証済み画面の表示後に一度だけ要求され、拒否後もアプリを利用できる。
+- [ ] 通知Channel `munitter_notifications` が存在し、badge／通知ドットが端末設定で許可されている。
+- [ ] Development通知APIの未読通知がAndroid通知領域へ表示され、ホーム画面のアプリアイコンに通知ドット／badgeが付く。
+- [ ] 通知タップで既存singleTask WebViewが再利用され、対象URLまたはNotificationsへ遷移する。
+- [ ] Web側で通知を既読化すると、次回同期でOS通知とbadgeが消える。
 - [ ] 一般外部 HTTPS リンクが標準ブラウザーで開く。
 - [ ] 内部 HTTPS リンクが WebView 内で開く。
 - [ ] `mailto:` と `tel:` は対応アプリがある場合だけ安全に開く。
@@ -90,7 +95,7 @@
 - [ ] HTTP、`file:`、`javascript:`、不明 scheme を WebView 内で開かない。
 - [ ] `window.open` / 新規タブ相当のリンクで、内部・OAuth・外部の規則が維持される。
 
-FCM と App Links は初期版では未導入である。OS プッシュ通知や、アプリ未起動時の検証済み App Link を合格項目に含めない。
+FCM と App Links は未導入である。WorkManager同期は端末のバックグラウンド制限と最短15分周期の影響を受けるため、FCM相当の即時性やアプリforce-stop中の受信を合格扱いにしない。
 
 ## 7. 障害、復帰、表示
 
