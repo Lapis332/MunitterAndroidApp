@@ -1,13 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path
-        android:fillColor="@color/munitter_icon"
-        android:pathData="M27,28C21.5,28 17,32.5 17,38V68C17,73.5 21.5,78 27,78H40L53,90V78H81C86.5,78 91,73.5 91,68V38C91,32.5 86.5,28 81,28H27Z" />
-    <path
-        android:fillColor="@color/munitter_background"
-        android:pathData="M35,45H42V61H35ZM50,45H57V61H50ZM65,45H72V61H65Z" />
-</vector>
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:inset="10%"
+    android:drawable="@drawable/munitter_app_icon_foreground" />
