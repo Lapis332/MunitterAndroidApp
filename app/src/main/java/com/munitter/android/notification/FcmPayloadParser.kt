@@ -7,6 +7,7 @@ data class MunitterPushMessage(
     val body: String,
     val targetUrl: String,
     val unreadCount: Int,
+    val hasUnreadCount: Boolean,
     val timestamp: String,
 )
 
@@ -26,9 +27,9 @@ object FcmPayloadParser {
         val targetUrl = data["target_url"]?.trim().orEmpty()
             .ifBlank { data["targetUrl"]?.trim().orEmpty() }
             .let { url -> if (url.startsWith("/")) url else "/notifications" }
-        val unreadCount = data["unread_count"]?.toIntOrNull()?.coerceAtLeast(0)
-            ?: data["unreadCount"]?.toIntOrNull()?.coerceAtLeast(0)
-            ?: 0
+        val unreadRaw = data["unread_count"] ?: data["unreadCount"]
+        val unreadValue = unreadRaw?.toIntOrNull()
+        val unreadCount = unreadValue?.coerceAtLeast(0) ?: 0
 
         return MunitterPushMessage(
             notificationId = notificationId,
@@ -37,6 +38,7 @@ object FcmPayloadParser {
             body = body,
             targetUrl = targetUrl,
             unreadCount = unreadCount,
+            hasUnreadCount = unreadValue != null,
             timestamp = data["timestamp"]?.trim().orEmpty(),
         )
     }

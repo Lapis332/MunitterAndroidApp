@@ -22,6 +22,7 @@ class FcmPayloadParserTest {
         assertEquals("user:42", parsed?.notificationId)
         assertEquals("Like", parsed?.notificationType)
         assertEquals(3, parsed?.unreadCount)
+        assertEquals(true, parsed?.hasUnreadCount)
         assertEquals("/notifications", parsed?.targetUrl)
     }
 
@@ -33,6 +34,7 @@ class FcmPayloadParserTest {
         )
         assertEquals("/notifications", parsed?.targetUrl)
         assertEquals(0, parsed?.unreadCount)
+        assertEquals(false, parsed?.hasUnreadCount)
     }
 
     @Test
@@ -42,6 +44,7 @@ class FcmPayloadParserTest {
         )
         assertEquals("group:7", parsed?.notificationId)
         assertEquals(0, parsed?.unreadCount)
+        assertEquals(true, parsed?.hasUnreadCount)
         assertEquals("/groups", parsed?.targetUrl)
     }
 }

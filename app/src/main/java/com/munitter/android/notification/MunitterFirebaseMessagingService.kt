@@ -38,7 +38,11 @@ class MunitterFirebaseMessagingService : FirebaseMessagingService() {
             targetUrl = payload.targetUrl,
             isRead = false,
         )
-        val unreadCount = maxOf(payload.unreadCount, activeIds.size)
+        val unreadCount = if (payload.hasUnreadCount) {
+            payload.unreadCount
+        } else {
+            activeIds.size
+        }
         MunitterNotificationCenter(this).show(notification, unreadCount, alert = true)
         MunitterNotificationCenter(this).updateSummary(unreadCount)
         Log.i(
