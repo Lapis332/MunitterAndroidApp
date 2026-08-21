@@ -37,8 +37,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import com.munitter.android.notification.MunitterNotificationCenter
+import com.munitter.android.notification.FcmTokenRegistrar
+import com.munitter.android.notification.FcmTokenStore
 import com.munitter.android.notification.NotificationSyncEngine
 import com.munitter.android.notification.NotificationSyncScheduler
+import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
@@ -70,6 +73,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
 
         notificationCenter = MunitterNotificationCenter(this)
         NotificationSyncScheduler.schedule(this)
+        initializeDevelopmentFcm()
 
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
@@ -239,6 +243,24 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             hasVisibleContent = true,
         )
         requestNotificationPermissionIfAppropriate(webView.url)
+        if (BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)) {
+            lifecycleScope.launch { FcmTokenRegistrar(this@MainActivity).registerIfPossible() }
+        }
+    }
+
+    private fun initializeDevelopmentFcm() {
+        if (!BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)) return
+        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            if (!task.isSuccessful) {
+                android.util.Log.w(TAG, "FCM token retrieval failed", task.exception)
+                return@addOnCompleteListener
+            }
+            val token = task.result?.trim().orEmpty()
+            if (token.isBlank()) return@addOnCompleteListener
+            FcmTokenStore(this).save(token)
+            android.util.Log.i(TAG, "FCM token retrieved tokenHash=${token.hashCode().toUInt().toString(16)}")
+            lifecycleScope.launch { FcmTokenRegistrar(this@MainActivity).registerIfPossible() }
+        }
     }
 
     override fun onFailure(kind: WebFailureKind) {

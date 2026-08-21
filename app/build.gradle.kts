@@ -4,6 +4,17 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.google.services)
+}
+
+// Firebase is intentionally limited to the registered Development Debug
+// package. Production and the unregistered release variants must continue to
+// build without a production push credential or google-services.json.
+tasks.matching { task ->
+    (task.name.startsWith("processProduction") || task.name.startsWith("processDevelopmentRelease")) &&
+        task.name.endsWith("GoogleServices")
+}.configureEach {
+    enabled = false
 }
 
 android {
@@ -109,6 +120,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.work.runtime.ktx)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
