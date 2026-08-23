@@ -18,17 +18,42 @@ class FcmTokenRegistrar(context: Context) {
     suspend fun registerIfPossible(): Boolean = withContext(Dispatchers.IO) {
         if (!BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)) return@withContext false
         val token = store.read() ?: return@withContext false
-        if (token == store.registeredToken()) return@withContext true
         val cookie = runCatching {
             CookieManager.getInstance().getCookie(BuildConfig.BASE_URL)
         }.getOrNull()
         if (cookie.isNullOrBlank()) return@withContext false
-        val antiForgeryToken = store.antiForgeryToken() ?: fetchAntiForgeryToken(cookie) ?: return@withContext false
+        var antiForgeryToken = store.antiForgeryToken() ?: fetchAntiForgeryToken(cookie)
+            ?: return@withContext false
+        var status = postRegistration(token, cookie, antiForgeryToken)
+        if (status == HttpURLConnection.HTTP_BAD_REQUEST) {
+            // The antiforgery token is session-bound. Refresh it once after a
+            // server-side key/session rotation instead of retrying a stale value.
+            store.clearAntiForgeryToken()
+            val refreshedCookie = runCatching {
+                CookieManager.getInstance().getCookie(BuildConfig.BASE_URL)
+            }.getOrNull() ?: cookie
+            antiForgeryToken = fetchAntiForgeryToken(refreshedCookie) ?: return@withContext false
+            status = postRegistration(token, refreshedCookie, antiForgeryToken)
+        }
 
+        if (status in 200..299) {
+            store.markRegistered(token)
+            Log.i(TAG, "FCM token server registration succeeded status=$status")
+            true
+        } else {
+            if (status == HttpURLConnection.HTTP_UNAUTHORIZED ||
+                status == HttpURLConnection.HTTP_FORBIDDEN) {
+                store.clearRegistered()
+            }
+            Log.w(TAG, "FCM token server registration rejected status=$status")
+            false
+        }
+    }
+
+    private fun postRegistration(token: String, cookie: String, antiForgeryToken: String): Int {
         val endpoint = BuildConfig.BASE_URL.trimEnd('/') + "/api/fcm/token"
-        val connection = runCatching { URL(endpoint).openConnection() as HttpURLConnection }
-            .getOrElse { return@withContext false }
-        return@withContext try {
+        val connection = URL(endpoint).openConnection() as HttpURLConnection
+        return try {
             connection.requestMethod = "POST"
             connection.doOutput = true
             connection.connectTimeout = TIMEOUT_MS
@@ -55,18 +80,10 @@ class FcmTokenRegistrar(context: Context) {
                         .toString(),
                 )
             }
-            val status = connection.responseCode
-            if (status in 200..299) {
-                store.markRegistered(token)
-                Log.i(TAG, "FCM token server registration succeeded status=$status")
-                true
-            } else {
-                Log.w(TAG, "FCM token server registration rejected status=$status")
-                false
-            }
+            connection.responseCode
         } catch (exception: Exception) {
             Log.w(TAG, "FCM token server registration failed", exception)
-            false
+            -1
         } finally {
             connection.disconnect()
         }

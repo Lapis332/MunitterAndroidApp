@@ -56,13 +56,6 @@ class NotificationSyncEngine(context: Context) {
             }
         } while (hasMore && activeBefore.any { it !in seen })
 
-        if (!hasMore || activeBefore.all { it in seen }) {
-            (activeBefore - seen).forEach {
-                active.remove(it)
-                center.cancel(it)
-            }
-        }
-
         stateStore.writeActiveIds(active)
         if (active.isEmpty()) {
             center.updateSummary(0)

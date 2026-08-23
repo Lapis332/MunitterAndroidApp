@@ -18,11 +18,19 @@ class FcmTokenStore(context: Context) {
         preferences.edit().putString(REGISTERED_TOKEN, token.trim()).apply()
     }
 
+    fun clearRegistered() {
+        preferences.edit().remove(REGISTERED_TOKEN).apply()
+    }
+
     fun registeredToken(): String? =
         preferences.getString(REGISTERED_TOKEN, null)?.trim()?.takeIf { it.isNotEmpty() }
 
     fun saveAntiForgeryToken(token: String) {
         preferences.edit().putString(ANTI_FORGERY_TOKEN, token.trim()).apply()
+    }
+
+    fun clearAntiForgeryToken() {
+        preferences.edit().remove(ANTI_FORGERY_TOKEN).apply()
     }
 
     fun antiForgeryToken(): String? =

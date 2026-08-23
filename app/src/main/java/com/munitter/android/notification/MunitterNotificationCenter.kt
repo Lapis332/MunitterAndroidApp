@@ -56,7 +56,10 @@ class MunitterNotificationCenter(context: Context) {
             .setContentText(notification.message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(notification.message))
             .setContentIntent(contentIntent)
-            .setAutoCancel(true)
+            // Reading the DM is the only operation allowed to remove its
+            // notification. Foreground/Home transitions must not implicitly
+            // acknowledge it through Android's auto-cancel behavior.
+            .setAutoCancel(false)
             .setGroup(GROUP_KEY)
             .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
             .setOnlyAlertOnce(true)
@@ -85,7 +88,7 @@ class MunitterNotificationCenter(context: Context) {
             .setContentTitle("Munitter")
             .setContentText("未読通知 $unreadCount 件")
             .setContentIntent(contentIntent)
-            .setAutoCancel(true)
+            .setAutoCancel(false)
             .setGroup(GROUP_KEY)
             .setGroupSummary(true)
             .setOnlyAlertOnce(true)

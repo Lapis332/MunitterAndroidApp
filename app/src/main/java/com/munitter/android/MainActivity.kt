@@ -177,6 +177,9 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     override fun onResume() {
         super.onResume()
         webView?.onResume()
+        if (BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)) {
+            lifecycleScope.launch { FcmTokenRegistrar(this@MainActivity).registerIfPossible() }
+        }
         notificationSyncJob?.cancel()
         notificationSyncJob = lifecycleScope.launch {
             while (true) {
@@ -438,7 +441,9 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             cookieManager.flush()
         }
 
-        return wroteCookie
+        // A preserved authenticated session legitimately returns no Set-Cookie.
+        // The bootstrap response itself is still successful in that case.
+        return true
     }
 
     private fun postDevelopmentDebugRequest(
@@ -453,6 +458,11 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             connection.readTimeout = DEVELOPMENT_DEBUG_BOOTSTRAP_TIMEOUT_MS
             connection.doOutput = false
             connection.setRequestProperty("Accept", "application/json")
+            runCatching {
+                CookieManager.getInstance().getCookie(BuildConfig.BASE_URL)
+            }.getOrNull()?.takeIf { it.isNotBlank() }?.let {
+                connection.setRequestProperty("Cookie", it)
+            }
             connection.setRequestProperty("X-Munitter-Client", BuildConfig.DEVELOPMENT_DEBUG_CLIENT_HEADER)
 
             val status = connection.responseCode
