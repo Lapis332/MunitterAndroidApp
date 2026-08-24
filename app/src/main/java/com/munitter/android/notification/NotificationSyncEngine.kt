@@ -40,6 +40,15 @@ class NotificationSyncEngine(context: Context) {
                 }
                 is NotificationFetchResult.Page -> {
                     val page = response.value
+                    if (firstPage && page.unreadCount == 0) {
+                        // The notifications page does not contain DM rows, so
+                        // an empty page alone cannot prove that a DM push was
+                        // read. The server-provided aggregate is authoritative
+                        // for clearing every native notification owned by this
+                        // app instance.
+                        clearStateAndNotifications()
+                        return@withContext NotificationSyncOutcome.Succeeded
+                    }
                     for (item in page.items) {
                         seen += item.id
                         if (item.isRead) {

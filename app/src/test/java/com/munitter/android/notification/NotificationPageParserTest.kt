@@ -12,6 +12,7 @@ class NotificationPageParserTest {
             """
             {
               "hasMore": true,
+              "unreadCount": 3,
               "items": [
                 {"id":"user-12","title":"いいね","message":"新しい通知","targetUrl":"/post/42","isRead":false,"notificationType":"Muni","actorName":"送信者A","actorImageUrl":"/profile/media/17/avatar","actorAvatarVersion":"avatar-1","actorUserBaseId":17},
                 {"id":"group-3","title":"既読","message":"古い通知","targetUrl":"","isRead":true}
@@ -21,6 +22,7 @@ class NotificationPageParserTest {
         )
 
         assertTrue(page.hasMore)
+        assertEquals(3, page.unreadCount)
         assertEquals(2, page.items.size)
         assertEquals("user-12", page.items[0].id)
         assertEquals("/post/42", page.items[0].targetUrl)
@@ -40,5 +42,15 @@ class NotificationPageParserTest {
         )
 
         assertTrue(page.items.isEmpty())
+        assertEquals(null, page.unreadCount)
+    }
+
+    @Test
+    fun `negative unread count is clamped and does not crash`() {
+        val page = NotificationPageParser.parse(
+            "{\"hasMore\":false,\"unreadCount\":-4,\"items\":[]}"
+        )
+
+        assertEquals(0, page.unreadCount)
     }
 }

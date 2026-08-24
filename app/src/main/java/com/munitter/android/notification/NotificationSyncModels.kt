@@ -18,6 +18,7 @@ data class MunitterNotification(
 data class NotificationPage(
     val items: List<MunitterNotification>,
     val hasMore: Boolean,
+    val unreadCount: Int? = null,
 )
 
 object NotificationPageParser {
@@ -49,7 +50,16 @@ object NotificationPageParser {
                 )
             }
         }
-        return NotificationPage(items = items, hasMore = root.optBoolean("hasMore", false))
+        val unreadCount = if (root.has("unreadCount")) {
+            root.optInt("unreadCount", 0).coerceAtLeast(0)
+        } else {
+            null
+        }
+        return NotificationPage(
+            items = items,
+            hasMore = root.optBoolean("hasMore", false),
+            unreadCount = unreadCount,
+        )
     }
 }
 
