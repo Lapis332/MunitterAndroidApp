@@ -14,7 +14,6 @@ import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.core.app.Person
 import androidx.core.content.ContextCompat
 import com.munitter.android.BuildConfig
 import com.munitter.android.MainActivity
@@ -77,7 +76,7 @@ class MunitterNotificationCenter(context: Context) {
     }
 
     @SuppressLint("MissingPermission")
-    fun updateSummary(unreadCount: Int) {
+    fun updateSummary(unreadCount: Int, actorAvatar: Bitmap? = null) {
         if (!hasNotificationPermission() || !notificationManager.areNotificationsEnabled()) return
         if (unreadCount <= 0) {
             notificationManager.cancel(SUMMARY_ID)
@@ -101,8 +100,8 @@ class MunitterNotificationCenter(context: Context) {
             .setOnlyAlertOnce(true)
             .setNumber(unreadCount)
             .setSilent(true)
-            .build()
-        notificationManager.notify(SUMMARY_ID, summary)
+        if (actorAvatar != null) summary.setLargeIcon(actorAvatar)
+        notificationManager.notify(SUMMARY_ID, summary.build())
     }
 
     fun cancel(notificationId: String) {
@@ -135,19 +134,11 @@ class MunitterNotificationCenter(context: Context) {
         }
 
         builder.setLargeIcon(actorAvatar)
-        if (notification.isDirectMessage && notification.actorDisplayName.isNotBlank()) {
-            val actor = Person.Builder()
-                .setName(notification.actorDisplayName)
-                .setIcon(androidx.core.graphics.drawable.IconCompat.createWithBitmap(actorAvatar))
-                .build()
-            val appUser = Person.Builder().setName("Munitter").build()
-            builder.setStyle(
-                NotificationCompat.MessagingStyle(appUser)
-                    .addMessage(notification.message, System.currentTimeMillis(), actor),
-            )
-        } else {
-            builder.setStyle(NotificationCompat.BigTextStyle().bigText(notification.message))
-        }
+        // Samsung One UI can reduce a MessagingStyle sender avatar to the
+        // application small icon in the expanded card. Keep the actor bitmap
+        // as the notification large icon and use BigTextStyle so the profile
+        // image remains visible on the physical Development device as well.
+        builder.setStyle(NotificationCompat.BigTextStyle().bigText(notification.message))
     }
 
     private fun ensureChannel() {

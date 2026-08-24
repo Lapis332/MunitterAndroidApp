@@ -1,6 +1,7 @@
 package com.munitter.android.notification
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -25,6 +26,7 @@ class NotificationSyncEngine(context: Context) {
         var offset = 0
         var hasMore = false
         var firstPage = true
+        var latestActorAvatar: Bitmap? = null
         var response: NotificationFetchResult
 
         do {
@@ -70,6 +72,7 @@ class NotificationSyncEngine(context: Context) {
                                 version = item.actorAvatarVersion,
                             )
                             val cachedAvatar = avatarSpec?.let(avatarLoader::loadCached)
+                            if (cachedAvatar != null) latestActorAvatar = cachedAvatar
                             center.show(
                                 item,
                                 active.size,
@@ -78,6 +81,7 @@ class NotificationSyncEngine(context: Context) {
                             )
                             if (avatarSpec != null && cachedAvatar == null) {
                                 avatarLoader.loadOrFetch(avatarSpec)?.let { fetchedAvatar ->
+                                    latestActorAvatar = fetchedAvatar
                                     center.show(
                                         item,
                                         active.size,
@@ -99,7 +103,7 @@ class NotificationSyncEngine(context: Context) {
         if (active.isEmpty()) {
             center.updateSummary(0)
         } else {
-            center.updateSummary(active.size)
+            center.updateSummary(active.size, latestActorAvatar)
         }
         NotificationSyncOutcome.Succeeded
     }
