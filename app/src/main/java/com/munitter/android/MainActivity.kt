@@ -4,6 +4,7 @@ import android.graphics.Color
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
@@ -25,6 +26,7 @@ import com.munitter.android.navigation.NavigationTarget
 import com.munitter.android.navigation.OAuthNavigationState
 import com.munitter.android.ui.MunitterScreen
 import com.munitter.android.ui.MunitterTheme
+import com.munitter.android.ui.StartupOverlayController
 import com.munitter.android.web.FullscreenMediaController
 import com.munitter.android.web.MunitterWebChromeClient
 import com.munitter.android.web.MunitterWebViewClient
@@ -54,8 +56,13 @@ import java.net.URL
 
 class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     private var webView: WebView? = null
+    private var munitterWebViewClient: MunitterWebViewClient? = null
     private var uiState by mutableStateOf(WebUiState())
     private var navigationHeaderSnapshot by mutableStateOf<Bitmap?>(null)
+    private val startupOverlayController = StartupOverlayController(
+        enabled = BuildConfig.ENABLE_STARTUP_OVERLAY,
+    )
+    private var startupOverlayVisible by mutableStateOf(startupOverlayController.isVisible)
     private var lastVisibleHeaderSnapshot: Bitmap? = null
     private lateinit var navigationPolicy: NavigationPolicy
     private lateinit var oauthState: OAuthNavigationState
@@ -66,10 +73,18 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     private lateinit var downloads: SecureDownloadCoordinator
     private lateinit var notificationCenter: MunitterNotificationCenter
     private var notificationSyncJob: Job? = null
+    private var pendingNotificationPermissionUrl: String? = null
+    private var pendingNotificationPermissionRequest: Runnable? = null
+    private var activityCreatedAt = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        activityCreatedAt = SystemClock.uptimeMillis()
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        android.util.Log.d(
+            TAG,
+            "Activity created startupOverlay=${startupOverlayController.isVisible}",
+        )
 
         notificationCenter = MunitterNotificationCenter(this)
         NotificationSyncScheduler.schedule(this)
@@ -77,7 +92,9 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
 
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
-            navigationBarStyle = SystemBarStyle.dark(Color.rgb(36, 33, 30)),
+            navigationBarStyle = SystemBarStyle.dark(
+                if (BuildConfig.ENABLE_STARTUP_OVERLAY) Color.BLACK else Color.rgb(36, 33, 30),
+            ),
         )
 
         navigationPolicy = NavigationPolicy(BuildConfig.INTERNAL_HOST)
@@ -110,8 +127,10 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
                 internalHost = BuildConfig.INTERNAL_HOST,
                 navigationCoordinator = navigationCoordinator,
                 oauthState = oauthState,
+                startupPresentationEnabled = BuildConfig.ENABLE_STARTUP_OVERLAY,
                 callbacks = this,
             )
+            munitterWebViewClient = client
             val chromeClient = MunitterWebChromeClient(
                 fileChooser = fileChooser,
                 permissions = permissions,
@@ -126,6 +145,9 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
                 onDownload = downloads::requestDownload,
             )
         } else {
+            if (startupOverlayController.onWebViewUnavailable()) {
+                startupOverlayVisible = false
+            }
             uiState = WebUiState(
                 isLoading = false,
                 failure = WebFailureKind.WEBVIEW_UNAVAILABLE,
@@ -138,6 +160,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
                     webView = webView,
                     state = uiState,
                     navigationHeaderSnapshot = navigationHeaderSnapshot,
+                    startupOverlayVisible = startupOverlayVisible,
                     onRetry = ::retry,
                     onBack = ::handleBack,
                 )
@@ -150,6 +173,8 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
                 ?.let(candidate::restoreState) != null
             if (!restored) {
                 attemptDevelopmentDebugBootstrap(resolveLaunchUrl(intent?.dataString))
+            } else if (BuildConfig.ENABLE_STARTUP_OVERLAY) {
+                munitterWebViewClient?.observeRestoredState(candidate)
             }
         }
     }
@@ -209,6 +234,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         }
 
         webView?.let { activeWebView ->
+            pendingNotificationPermissionRequest?.let(activeWebView::removeCallbacks)
             (activeWebView.parent as? ViewGroup)?.removeView(activeWebView)
             activeWebView.stopLoading()
             activeWebView.webChromeClient = WebChromeClient()
@@ -216,7 +242,41 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             activeWebView.destroy()
         }
         webView = null
+        munitterWebViewClient = null
+        pendingNotificationPermissionRequest = null
+        pendingNotificationPermissionUrl = null
         super.onDestroy()
+    }
+
+    override fun onStartupNavigationStarted(generation: Long) {
+        startupOverlayController.onNavigationStarted(generation)
+        android.util.Log.d(
+            TAG,
+            "Startup navigation generation=$generation activityElapsedMs=${activityElapsedMs()}",
+        )
+    }
+
+    override fun onStartupPresentationReady(webView: WebView, generation: Long) {
+        if (!startupOverlayController.onPresentationReady(generation)) return
+        startupOverlayVisible = false
+        android.util.Log.d(
+            TAG,
+            "Startup overlay fade started generation=$generation activityElapsedMs=${activityElapsedMs()}",
+        )
+        schedulePendingNotificationPermission(webView)
+    }
+
+    override fun onStartupNavigationFailed(generation: Long?) {
+        if (!startupOverlayController.onNavigationFailed(generation)) return
+        startupOverlayVisible = false
+        pendingNotificationPermissionRequest?.let { request -> webView?.removeCallbacks(request) }
+        pendingNotificationPermissionRequest = null
+        pendingNotificationPermissionUrl = null
+        android.util.Log.d(
+            TAG,
+            "Startup overlay released for error generation=${generation ?: -1L} " +
+                "activityElapsedMs=${activityElapsedMs()}",
+        )
     }
 
     override fun onLoadingStarted(webView: WebView) {
@@ -245,7 +305,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             isLoading = false,
             hasVisibleContent = true,
         )
-        requestNotificationPermissionIfAppropriate(webView.url)
+        requestNotificationPermissionWhenStartupAllows(webView, webView.url)
         if (BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)) {
             lifecycleScope.launch { FcmTokenRegistrar(this@MainActivity).registerIfPossible() }
         }
@@ -318,6 +378,9 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             }
         }.getOrNull()
     }
+
+    private fun activityElapsedMs(): Long =
+        (SystemClock.uptimeMillis() - activityCreatedAt).coerceAtLeast(0L)
 
     private fun retry() {
         val activeWebView = webView
@@ -519,6 +582,30 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         )
     }
 
+    private fun requestNotificationPermissionWhenStartupAllows(webView: WebView, rawUrl: String?) {
+        if (!BuildConfig.ENABLE_STARTUP_OVERLAY) {
+            requestNotificationPermissionIfAppropriate(rawUrl)
+            return
+        }
+
+        pendingNotificationPermissionUrl = rawUrl
+        if (!startupOverlayVisible) {
+            schedulePendingNotificationPermission(webView)
+        }
+    }
+
+    private fun schedulePendingNotificationPermission(webView: WebView) {
+        val rawUrl = pendingNotificationPermissionUrl ?: return
+        pendingNotificationPermissionRequest?.let(webView::removeCallbacks)
+        val request = Runnable {
+            pendingNotificationPermissionRequest = null
+            pendingNotificationPermissionUrl = null
+            requestNotificationPermissionIfAppropriate(rawUrl)
+        }
+        pendingNotificationPermissionRequest = request
+        webView.postDelayed(request, NOTIFICATION_PERMISSION_AFTER_STARTUP_DELAY_MS)
+    }
+
     companion object {
         private const val STATE_WEBVIEW = "munitter.webview.state"
         private const val STATE_OAUTH_IN_PROGRESS = "munitter.oauth.in_progress"
@@ -526,6 +613,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         private const val HEADER_SNAPSHOT_HEIGHT_DP = 56
         private const val FOREGROUND_NOTIFICATION_SYNC_INTERVAL_MS = 60_000L
         private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 4201
+        private const val NOTIFICATION_PERMISSION_AFTER_STARTUP_DELAY_MS = 250L
         private val LOGIN_OR_PUBLIC_PATHS = setOf(
             "/",
             "/index",

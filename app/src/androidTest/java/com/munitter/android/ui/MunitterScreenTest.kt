@@ -42,6 +42,41 @@ class MunitterScreenTest {
     }
 
     @Test
+    fun coldLaunchShowsStartupOverlayAboveLoadingState() {
+        composeRule.setContent {
+            MunitterTheme {
+                MunitterScreen(
+                    webView = null,
+                    state = WebUiState(isLoading = true),
+                    startupOverlayVisible = true,
+                    onRetry = {},
+                    onBack = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(STARTUP_OVERLAY_TEST_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun readyStateDoesNotKeepStartupOverlay() {
+        composeRule.setContent {
+            MunitterTheme {
+                MunitterScreen(
+                    webView = null,
+                    state = WebUiState(hasVisibleContent = true),
+                    startupOverlayVisible = false,
+                    onRetry = {},
+                    onBack = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(STARTUP_OVERLAY_TEST_TAG).assertDoesNotExist()
+        composeRule.onNodeWithTag(LOADING_PANEL_TEST_TAG).assertDoesNotExist()
+    }
+
+    @Test
     fun errorStateShowsErrorPanelAndRetryInvokesCallback() {
         val retryCount = AtomicInteger(0)
         composeRule.setContent {

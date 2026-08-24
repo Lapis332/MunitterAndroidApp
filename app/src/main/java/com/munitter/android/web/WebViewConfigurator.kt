@@ -30,7 +30,9 @@ object WebViewConfigurator {
             setAcceptThirdPartyCookies(webView, BuildConfig.ACCEPT_THIRD_PARTY_COOKIES)
         }
 
-        webView.setBackgroundColor(Color.rgb(36, 33, 30))
+        webView.setBackgroundColor(
+            if (BuildConfig.ENABLE_STARTUP_OVERLAY) Color.BLACK else Color.rgb(36, 33, 30),
+        )
         webView.isVerticalScrollBarEnabled = false
         webView.isHorizontalScrollBarEnabled = false
         webView.settings.apply {

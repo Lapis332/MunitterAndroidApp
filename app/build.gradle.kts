@@ -49,6 +49,7 @@ android {
             buildConfigField("String", "BASE_URL", "\"https://dev.munitter.com/\"")
             buildConfigField("String", "INTERNAL_HOST", "\"dev.munitter.com\"")
             buildConfigField("boolean", "WEBVIEW_DEBUGGABLE", "true")
+            buildConfigField("boolean", "ENABLE_STARTUP_OVERLAY", "true")
             buildConfigField(
                 "String",
                 "DEVELOPMENT_DEBUG_CLIENT_HEADER",
@@ -62,6 +63,7 @@ android {
             buildConfigField("String", "BASE_URL", "\"https://munitter.com/\"")
             buildConfigField("String", "INTERNAL_HOST", "\"munitter.com\"")
             buildConfigField("boolean", "WEBVIEW_DEBUGGABLE", "false")
+            buildConfigField("boolean", "ENABLE_STARTUP_OVERLAY", "false")
         }
     }
 
@@ -122,6 +124,7 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
+    add("developmentImplementation", libs.androidx.fragment)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
