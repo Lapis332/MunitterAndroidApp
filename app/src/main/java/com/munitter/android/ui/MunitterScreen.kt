@@ -49,6 +49,7 @@ const val ERROR_PANEL_TEST_TAG = "web_error_panel"
 const val LOADING_PANEL_TEST_TAG = "web_loading_panel"
 const val NAVIGATION_HEADER_SNAPSHOT_TEST_TAG = "navigation_header_snapshot"
 const val STARTUP_OVERLAY_TEST_TAG = "startup_overlay"
+const val STARTUP_ICON_TEST_TAG = "startup_icon"
 
 @OptIn(ExperimentalActivityApi::class)
 @Composable
@@ -143,7 +144,9 @@ private fun StartupOverlay() {
             painter = painterResource(R.drawable.munitter_app_icon_foreground),
             contentDescription = null,
             contentScale = ContentScale.Fit,
-            modifier = Modifier.size(STARTUP_ICON_SIZE_DP.dp),
+            modifier = Modifier
+                .size(STARTUP_ICON_SIZE_DP.dp)
+                .testTag(STARTUP_ICON_TEST_TAG),
         )
     }
 }
@@ -203,4 +206,4 @@ private fun ErrorPanel(
 }
 
 private const val STARTUP_FADE_DURATION_MS = 200
-private const val STARTUP_ICON_SIZE_DP = 230
+private const val STARTUP_ICON_SIZE_DP = 196

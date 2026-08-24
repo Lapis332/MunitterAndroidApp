@@ -2,10 +2,13 @@ package com.munitter.android.ui
 
 import android.graphics.Bitmap
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertHeightIsEqualTo
+import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.munitter.android.web.WebFailureKind
 import com.munitter.android.web.WebUiState
@@ -56,6 +59,9 @@ class MunitterScreenTest {
         }
 
         composeRule.onNodeWithTag(STARTUP_OVERLAY_TEST_TAG).assertIsDisplayed()
+        composeRule.onNodeWithTag(STARTUP_ICON_TEST_TAG)
+            .assertWidthIsEqualTo(196.dp)
+            .assertHeightIsEqualTo(196.dp)
     }
 
     @Test

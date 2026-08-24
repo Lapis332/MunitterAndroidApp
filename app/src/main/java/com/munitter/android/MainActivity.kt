@@ -79,8 +79,13 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         activityCreatedAt = SystemClock.uptimeMillis()
-        installSplashScreen()
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+        if (BuildConfig.ENABLE_STARTUP_OVERLAY) {
+            splashScreen.setOnExitAnimationListener { provider ->
+                provider.remove()
+            }
+        }
         android.util.Log.d(
             TAG,
             "Activity created startupOverlay=${startupOverlayController.isVisible}",
