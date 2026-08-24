@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 class MunitterFirebaseMessagingService : FirebaseMessagingService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -63,8 +64,16 @@ class MunitterFirebaseMessagingService : FirebaseMessagingService() {
             "FCM notification displayed id=${payload.notificationId} type=${payload.notificationType} unread=$unreadCount avatar=${if (cachedAvatar != null) "cache" else "fallback"}",
         )
         if (avatarSpec != null && cachedAvatar == null) {
-            scope.launch {
-                val fetchedAvatar = avatarLoader.loadOrFetch(avatarSpec)
+            // FirebaseMessagingService may be destroyed as soon as this
+            // callback returns. Keep the initial notification immediate, but
+            // finish the bounded avatar update before returning so the same
+            // notification ID is reliably updated instead of losing the job.
+            runBlocking {
+                val fetchedAvatar = runCatching { avatarLoader.loadOrFetch(avatarSpec) }
+                    .onFailure { exception ->
+                        Log.w(TAG, "FCM notification avatar update failed actorId=${payload.actorUserId}", exception)
+                    }
+                    .getOrNull()
                 if (fetchedAvatar != null) {
                     center.show(
                         notification,
