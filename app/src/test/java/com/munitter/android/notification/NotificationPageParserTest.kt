@@ -13,7 +13,7 @@ class NotificationPageParserTest {
             {
               "hasMore": true,
               "items": [
-                {"id":"user-12","title":"いいね","message":"新しい通知","targetUrl":"/post/42","isRead":false},
+                {"id":"user-12","title":"いいね","message":"新しい通知","targetUrl":"/post/42","isRead":false,"notificationType":"Muni","actorName":"送信者A","actorImageUrl":"/profile/media/17/avatar","actorAvatarVersion":"avatar-1","actorUserBaseId":17},
                 {"id":"group-3","title":"既読","message":"古い通知","targetUrl":"","isRead":true}
               ]
             }
@@ -25,6 +25,11 @@ class NotificationPageParserTest {
         assertEquals("user-12", page.items[0].id)
         assertEquals("/post/42", page.items[0].targetUrl)
         assertFalse(page.items[0].isRead)
+        assertEquals("Muni", page.items[0].notificationType)
+        assertEquals(17L, page.items[0].actorUserId)
+        assertEquals("送信者A", page.items[0].actorDisplayName)
+        assertEquals("/profile/media/17/avatar", page.items[0].actorAvatarUrl)
+        assertEquals("avatar-1", page.items[0].actorAvatarVersion)
         assertTrue(page.items[1].isRead)
     }
 

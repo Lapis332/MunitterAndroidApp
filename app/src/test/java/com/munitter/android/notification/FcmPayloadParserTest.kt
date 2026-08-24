@@ -16,6 +16,10 @@ class FcmPayloadParserTest {
                 "target_url" to "/notifications",
                 "unread_count" to "3",
                 "timestamp" to "2026-08-21T00:00:00Z",
+                "actor_user_id" to "17",
+                "actor_display_name" to "送信者A",
+                "actor_avatar_url" to "/profile/media/17/avatar?v=avatar-1",
+                "actor_avatar_version" to "avatar-1",
             ),
         )
 
@@ -24,6 +28,10 @@ class FcmPayloadParserTest {
         assertEquals(3, parsed?.unreadCount)
         assertEquals(true, parsed?.hasUnreadCount)
         assertEquals("/notifications", parsed?.targetUrl)
+        assertEquals(17L, parsed?.actorUserId)
+        assertEquals("送信者A", parsed?.actorDisplayName)
+        assertEquals("/profile/media/17/avatar?v=avatar-1", parsed?.actorAvatarUrl)
+        assertEquals("avatar-1", parsed?.actorAvatarVersion)
     }
 
     @Test
@@ -46,5 +54,19 @@ class FcmPayloadParserTest {
         assertEquals(0, parsed?.unreadCount)
         assertEquals(true, parsed?.hasUnreadCount)
         assertEquals("/groups", parsed?.targetUrl)
+    }
+
+    @Test
+    fun rejectsExternalOrTraversalAvatarPathsWithoutCrashing() {
+        val parsed = FcmPayloadParser.parse(
+            mapOf(
+                "notification_id" to "user:17",
+                "actor_user_id" to "17",
+                "actor_avatar_url" to "https://munitter.com/profile/media/17/avatar",
+            ),
+        )
+
+        assertEquals("", parsed?.actorAvatarUrl)
+        assertEquals(17L, parsed?.actorUserId)
     }
 }

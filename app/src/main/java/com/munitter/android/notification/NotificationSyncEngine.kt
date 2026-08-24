@@ -16,6 +16,7 @@ class NotificationSyncEngine(context: Context) {
     private val repository = MunitterNotificationRepository()
     private val center = MunitterNotificationCenter(appContext)
     private val stateStore = NotificationStateStore(appContext)
+    private val avatarLoader = NotificationAvatarLoader(appContext)
 
     suspend fun sync(): NotificationSyncOutcome = withContext(Dispatchers.IO) {
         val activeBefore = stateStore.readActiveIds()
@@ -46,7 +47,28 @@ class NotificationSyncEngine(context: Context) {
                         } else {
                             val isNew = item.id !in activeBefore
                             active += item.id
-                            center.show(item, active.size, alert = isNew)
+                            val avatarSpec = avatarLoader.specFor(
+                                actorUserId = item.actorUserId,
+                                relativeUrl = item.actorAvatarUrl,
+                                version = item.actorAvatarVersion,
+                            )
+                            val cachedAvatar = avatarSpec?.let(avatarLoader::loadCached)
+                            center.show(
+                                item,
+                                active.size,
+                                alert = isNew,
+                                actorAvatar = cachedAvatar,
+                            )
+                            if (avatarSpec != null && cachedAvatar == null) {
+                                avatarLoader.loadOrFetch(avatarSpec)?.let { fetchedAvatar ->
+                                    center.show(
+                                        item,
+                                        active.size,
+                                        alert = false,
+                                        actorAvatar = fetchedAvatar,
+                                    )
+                                }
+                            }
                         }
                     }
                     hasMore = page.hasMore

@@ -8,6 +8,11 @@ data class MunitterNotification(
     val message: String,
     val targetUrl: String,
     val isRead: Boolean,
+    val notificationType: String = "notification",
+    val actorUserId: Long? = null,
+    val actorDisplayName: String = "",
+    val actorAvatarUrl: String = "",
+    val actorAvatarVersion: String = "",
 )
 
 data class NotificationPage(
@@ -25,6 +30,7 @@ object NotificationPageParser {
                 val item = jsonItems.optJSONObject(index) ?: continue
                 val id = item.optString("id").trim()
                 if (id.isEmpty()) continue
+                val actorUserId = item.optLong("actorUserBaseId", 0L).takeIf { it > 0L }
                 add(
                     MunitterNotification(
                         id = id,
@@ -33,6 +39,12 @@ object NotificationPageParser {
                             .ifBlank { "新しい通知があります" },
                         targetUrl = item.optString("targetUrl").trim(),
                         isRead = item.optBoolean("isRead", true),
+                        notificationType = item.optString("notificationType", "notification")
+                            .trim().ifBlank { "notification" },
+                        actorUserId = actorUserId,
+                        actorDisplayName = item.optString("actorName").trim(),
+                        actorAvatarUrl = item.optString("actorImageUrl").trim(),
+                        actorAvatarVersion = item.optString("actorAvatarVersion").trim(),
                     ),
                 )
             }

@@ -7,12 +7,14 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.Person
 import androidx.core.content.ContextCompat
 import com.munitter.android.BuildConfig
 import com.munitter.android.MainActivity
@@ -41,7 +43,12 @@ class MunitterNotificationCenter(context: Context) {
     }
 
     @SuppressLint("MissingPermission")
-    fun show(notification: MunitterNotification, unreadCount: Int, alert: Boolean) {
+    fun show(
+        notification: MunitterNotification,
+        unreadCount: Int,
+        alert: Boolean,
+        actorAvatar: Bitmap? = null,
+    ) {
         if (!hasNotificationPermission() || !notificationManager.areNotificationsEnabled()) return
 
         val contentIntent = PendingIntent.getActivity(
@@ -54,7 +61,6 @@ class MunitterNotificationCenter(context: Context) {
             .setSmallIcon(com.munitter.android.R.drawable.ic_notification)
             .setContentTitle(notification.title)
             .setContentText(notification.message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(notification.message))
             .setContentIntent(contentIntent)
             // Reading the DM is the only operation allowed to remove its
             // notification. Foreground/Home transitions must not implicitly
@@ -65,6 +71,7 @@ class MunitterNotificationCenter(context: Context) {
             .setOnlyAlertOnce(true)
             .setNumber(unreadCount.coerceAtLeast(1))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+        applyActorPresentation(builder, notification, actorAvatar)
         if (!alert) builder.setSilent(true)
         notificationManager.notify(NotificationId.from(notification.id), builder.build())
     }
@@ -117,6 +124,32 @@ class MunitterNotificationCenter(context: Context) {
         }
     }
 
+    private fun applyActorPresentation(
+        builder: NotificationCompat.Builder,
+        notification: MunitterNotification,
+        actorAvatar: Bitmap?,
+    ) {
+        if (actorAvatar == null) {
+            builder.setStyle(NotificationCompat.BigTextStyle().bigText(notification.message))
+            return
+        }
+
+        builder.setLargeIcon(actorAvatar)
+        if (notification.isDirectMessage && notification.actorDisplayName.isNotBlank()) {
+            val actor = Person.Builder()
+                .setName(notification.actorDisplayName)
+                .setIcon(androidx.core.graphics.drawable.IconCompat.createWithBitmap(actorAvatar))
+                .build()
+            val appUser = Person.Builder().setName("Munitter").build()
+            builder.setStyle(
+                NotificationCompat.MessagingStyle(appUser)
+                    .addMessage(notification.message, System.currentTimeMillis(), actor),
+            )
+        } else {
+            builder.setStyle(NotificationCompat.BigTextStyle().bigText(notification.message))
+        }
+    }
+
     private fun ensureChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = appContext.getSystemService(NotificationManager::class.java) ?: return
@@ -146,3 +179,8 @@ class MunitterNotificationCenter(context: Context) {
         const val TAG = "MunitterNotifications"
     }
 }
+
+private val MunitterNotification.isDirectMessage: Boolean
+    get() = notificationType.equals("NewMessage", ignoreCase = true) ||
+        notificationType.equals("ImageMessage", ignoreCase = true) ||
+        notificationType.equals("dm", ignoreCase = true)

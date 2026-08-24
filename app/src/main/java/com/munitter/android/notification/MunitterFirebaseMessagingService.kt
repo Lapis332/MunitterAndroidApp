@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 
 class MunitterFirebaseMessagingService : FirebaseMessagingService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val avatarLoader by lazy { NotificationAvatarLoader(this) }
 
     override fun onNewToken(token: String) {
         if (!isDevelopment()) return
@@ -37,18 +38,47 @@ class MunitterFirebaseMessagingService : FirebaseMessagingService() {
             message = payload.body,
             targetUrl = payload.targetUrl,
             isRead = false,
+            notificationType = payload.notificationType,
+            actorUserId = payload.actorUserId,
+            actorDisplayName = payload.actorDisplayName,
+            actorAvatarUrl = payload.actorAvatarUrl,
+            actorAvatarVersion = payload.actorAvatarVersion,
         )
         val unreadCount = if (payload.hasUnreadCount) {
             payload.unreadCount
         } else {
             activeIds.size
         }
-        MunitterNotificationCenter(this).show(notification, unreadCount, alert = true)
-        MunitterNotificationCenter(this).updateSummary(unreadCount)
+        val center = MunitterNotificationCenter(this)
+        val avatarSpec = avatarLoader.specFor(
+            actorUserId = payload.actorUserId,
+            relativeUrl = payload.actorAvatarUrl,
+            version = payload.actorAvatarVersion,
+        )
+        val cachedAvatar = avatarSpec?.let(avatarLoader::loadCached)
+        center.show(notification, unreadCount, alert = true, actorAvatar = cachedAvatar)
+        center.updateSummary(unreadCount)
         Log.i(
             TAG,
-            "FCM notification received id=${payload.notificationId} type=${payload.notificationType} unread=$unreadCount",
+            "FCM notification displayed id=${payload.notificationId} type=${payload.notificationType} unread=$unreadCount avatar=${if (cachedAvatar != null) "cache" else "fallback"}",
         )
+        if (avatarSpec != null && cachedAvatar == null) {
+            scope.launch {
+                val fetchedAvatar = avatarLoader.loadOrFetch(avatarSpec)
+                if (fetchedAvatar != null) {
+                    center.show(
+                        notification,
+                        unreadCount,
+                        alert = false,
+                        actorAvatar = fetchedAvatar,
+                    )
+                    Log.i(
+                        TAG,
+                        "FCM notification updated id=${payload.notificationId} actorId=${payload.actorUserId} avatar=network",
+                    )
+                }
+            }
+        }
     }
 
     override fun onDestroy() {
