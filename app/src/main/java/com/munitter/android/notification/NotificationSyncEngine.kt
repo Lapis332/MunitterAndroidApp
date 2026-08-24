@@ -40,12 +40,20 @@ class NotificationSyncEngine(context: Context) {
                 }
                 is NotificationFetchResult.Page -> {
                     val page = response.value
+                    Log.d(
+                        MunitterNotificationCenter.TAG,
+                        "Notification sync page items=${page.items.size} unreadCount=${page.unreadCount} hasMore=${page.hasMore}",
+                    )
                     if (firstPage && page.unreadCount == 0) {
                         // The notifications page does not contain DM rows, so
                         // an empty page alone cannot prove that a DM push was
                         // read. The server-provided aggregate is authoritative
                         // for clearing every native notification owned by this
                         // app instance.
+                        Log.i(
+                            MunitterNotificationCenter.TAG,
+                            "Notification sync clearing native state from authoritative unread count",
+                        )
                         clearStateAndNotifications()
                         return@withContext NotificationSyncOutcome.Succeeded
                     }

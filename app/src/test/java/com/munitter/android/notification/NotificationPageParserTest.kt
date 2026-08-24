@@ -53,4 +53,13 @@ class NotificationPageParserTest {
 
         assertEquals(0, page.unreadCount)
     }
+
+    @Test
+    fun `snake case unread count remains compatible with development responses`() {
+        val page = NotificationPageParser.parse(
+            "{\"hasMore\":false,\"unread_count\":2,\"items\":[]}"
+        )
+
+        assertEquals(2, page.unreadCount)
+    }
 }

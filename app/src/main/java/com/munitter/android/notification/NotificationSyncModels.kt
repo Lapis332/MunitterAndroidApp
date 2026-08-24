@@ -50,11 +50,12 @@ object NotificationPageParser {
                 )
             }
         }
-        val unreadCount = if (root.has("unreadCount")) {
-            root.optInt("unreadCount", 0).coerceAtLeast(0)
-        } else {
-            null
+        val unreadCountKey = when {
+            root.has("unreadCount") -> "unreadCount"
+            root.has("unread_count") -> "unread_count"
+            else -> null
         }
+        val unreadCount = unreadCountKey?.let { root.optInt(it, 0).coerceAtLeast(0) }
         return NotificationPage(
             items = items,
             hasMore = root.optBoolean("hasMore", false),
