@@ -58,7 +58,7 @@ class MunitterFirebaseMessagingService : FirebaseMessagingService() {
         )
         val cachedAvatar = avatarSpec?.let(avatarLoader::loadCached)
         center.show(notification, unreadCount, alert = true, actorAvatar = cachedAvatar)
-        center.updateSummary(unreadCount)
+        center.updateSummary(unreadCount, cachedAvatar)
         Log.i(
             TAG,
             "FCM notification displayed id=${payload.notificationId} type=${payload.notificationType} unread=$unreadCount avatar=${if (cachedAvatar != null) "cache" else "fallback"}",
@@ -81,6 +81,7 @@ class MunitterFirebaseMessagingService : FirebaseMessagingService() {
                         alert = false,
                         actorAvatar = fetchedAvatar,
                     )
+                    center.updateSummary(unreadCount, fetchedAvatar)
                     Log.i(
                         TAG,
                         "FCM notification updated id=${payload.notificationId} actorId=${payload.actorUserId} avatar=network",
