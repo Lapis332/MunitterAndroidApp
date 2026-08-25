@@ -28,4 +28,6 @@
     <string name="cancel">キャンセル</string>
     <string name="download_complete">ダウンロードが完了しました。</string>
     <string name="download_failed">ダウンロードできませんでした。</string>
+    <string name="share_image_title">画像を共有</string>
+    <string name="image_share_failed">画像を共有できませんでした。</string>
 </resources>

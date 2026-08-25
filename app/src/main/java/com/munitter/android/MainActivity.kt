@@ -17,6 +17,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.munitter.android.download.SecureDownloadCoordinator
 import com.munitter.android.media.FileChooserCoordinator
+import com.munitter.android.media.NativeImageShareCoordinator
 import com.munitter.android.navigation.BackNavigationDecider
 import com.munitter.android.navigation.BackNavigationDecision
 import com.munitter.android.navigation.ExternalNavigator
@@ -71,6 +72,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     private lateinit var permissions: WebPermissionCoordinator
     private lateinit var fullscreen: FullscreenMediaController
     private lateinit var downloads: SecureDownloadCoordinator
+    private lateinit var nativeImageShare: NativeImageShareCoordinator
     private lateinit var notificationCenter: MunitterNotificationCenter
     private var notificationSyncJob: Job? = null
     private var pendingNotificationPermissionUrl: String? = null
@@ -109,6 +111,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         fileChooser = FileChooserCoordinator(this)
         permissions = WebPermissionCoordinator(this, navigationPolicy)
         downloads = SecureDownloadCoordinator(this, BuildConfig.INTERNAL_HOST)
+        nativeImageShare = NativeImageShareCoordinator(this, BuildConfig.INTERNAL_HOST)
 
         val candidate = runCatching { WebView(this) }.getOrNull()
         webView = candidate
@@ -149,6 +152,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
                 webChromeClient = chromeClient,
                 onDownload = downloads::requestDownload,
             )
+            nativeImageShare.attach(candidate)
         } else {
             if (startupOverlayController.onWebViewUnavailable()) {
                 startupOverlayVisible = false
@@ -236,6 +240,9 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         }
         if (::permissions.isInitialized) {
             permissions.cancelPending()
+        }
+        if (::nativeImageShare.isInitialized) {
+            nativeImageShare.detach()
         }
 
         webView?.let { activeWebView ->
