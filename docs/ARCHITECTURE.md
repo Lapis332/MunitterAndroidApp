@@ -44,7 +44,13 @@ minSdk 24 は Android 7.0 以降を対象にし、現行 WebView と Photo Picke
 | CSP、CORS、Service Worker、Web App Manifest | OS 権限、外部 Intent、通信エラー表示 |
 | モーダル、画像ビューア、Web 内スワイプ | Android の戻る操作と WebView 履歴の統合 |
 
-Android 固有の CSS / JavaScript 分岐は増やさず、User-Agent の短い識別子も大規模な専用 UI の条件には使わない。
+Android 固有の大規模な CSS / JavaScript UI 分岐は増やさず、User-Agent の短い識別子も専用画面の条件には使わない。Development Edge-to-Edgeでは、全面WebViewへOS由来のCSS safe areaを適用する能力markerに限り、Development environmentと既存Android User-Agentの組み合わせを使用する。
+
+## Development Edge-to-Edge
+
+Developmentでは `enableEdgeToEdge()` のtransparent system barsの背後までWebViewを `[0,0]` からWindow全域へ配置する。背景surfaceはsystem bars背後まで描画し、操作UIはWebViewが公開する `env(safe-area-inset-*)` を既存CSS contractで避ける。端末固定のstatus/navigation bar px、JavaScript bridge、System Barだけの色合わせは使わない。
+
+IMEはCompose `imePadding()`ではなく現行WebViewのVisualViewport resizeをWeb Fixed Composerが所有し、二重paddingを避ける。Productionは従来のWebView paddingとnavigation bar surfaceを維持する。実装とA57実測値は [DEVELOPMENT_EDGE_TO_EDGE_20260826.md](DEVELOPMENT_EDGE_TO_EDGE_20260826.md) に記録する。
 
 ## セキュリティ境界
 

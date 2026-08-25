@@ -3,6 +3,7 @@ package com.munitter.android
 import android.graphics.Color
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.ViewGroup
@@ -15,6 +16,8 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.munitter.android.download.SecureDownloadCoordinator
 import com.munitter.android.media.FileChooserCoordinator
 import com.munitter.android.media.NativeImageShareCoordinator
@@ -27,6 +30,7 @@ import com.munitter.android.navigation.NavigationTarget
 import com.munitter.android.navigation.OAuthNavigationState
 import com.munitter.android.ui.MunitterScreen
 import com.munitter.android.ui.MunitterTheme
+import com.munitter.android.ui.DevelopmentEdgeToEdge
 import com.munitter.android.ui.StartupOverlayController
 import com.munitter.android.web.FullscreenMediaController
 import com.munitter.android.web.MunitterWebChromeClient
@@ -56,6 +60,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
+    private val developmentEdgeToEdgeEnabled =
+        DevelopmentEdgeToEdge.isEnabled(BuildConfig.ENVIRONMENT)
     private var webView: WebView? = null
     private var munitterWebViewClient: MunitterWebViewClient? = null
     private var uiState by mutableStateOf(WebUiState())
@@ -100,9 +106,12 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(
-                if (BuildConfig.ENABLE_STARTUP_OVERLAY) Color.BLACK else Color.rgb(36, 33, 30),
+                if (developmentEdgeToEdgeEnabled) Color.TRANSPARENT else Color.rgb(36, 33, 30),
             ),
         )
+        if (developmentEdgeToEdgeEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
 
         navigationPolicy = NavigationPolicy(BuildConfig.INTERNAL_HOST)
         oauthState = OAuthNavigationState(
@@ -170,6 +179,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
                     state = uiState,
                     navigationHeaderSnapshot = navigationHeaderSnapshot,
                     startupOverlayVisible = startupOverlayVisible,
+                    webViewDrawsBehindSystemBars = developmentEdgeToEdgeEnabled,
                     onRetry = ::retry,
                     onBack = ::handleBack,
                 )
@@ -381,9 +391,23 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             return null
         }
 
-        val headerHeight = (HEADER_SNAPSHOT_HEIGHT_DP * resources.displayMetrics.density)
-            .toInt()
-            .coerceIn(1, activeWebView.height)
+        val baseHeaderHeight = (HEADER_SNAPSHOT_HEIGHT_DP * resources.displayMetrics.density).toInt()
+        val topInset = if (developmentEdgeToEdgeEnabled) {
+            ViewCompat.getRootWindowInsets(activeWebView)
+                ?.getInsets(
+                    WindowInsetsCompat.Type.systemBars() or
+                        WindowInsetsCompat.Type.displayCutout(),
+                )
+                ?.top
+                ?: 0
+        } else {
+            0
+        }
+        val headerHeight = DevelopmentEdgeToEdge.headerSnapshotHeightPx(
+            baseHeightPx = baseHeaderHeight,
+            topInsetPx = topInset,
+            webViewHeightPx = activeWebView.height,
+        )
         return runCatching {
             Bitmap.createBitmap(activeWebView.width, headerHeight, Bitmap.Config.ARGB_8888).also { bitmap ->
                 activeWebView.draw(Canvas(bitmap))

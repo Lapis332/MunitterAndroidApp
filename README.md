@@ -125,6 +125,7 @@ UI、投稿/DM処理、認証、CSRF、SignalR、アップロード制限、メ�
 - [Web契約監査](docs/WEB_CONTRACT_AUDIT.md)
 - [責務分離と設計](docs/ARCHITECTURE.md)
 - [Android A57実機チェックリスト](docs/DEVICE_TEST_CHECKLIST.md)
+- [Android Development Edge-to-Edge実機報告](docs/DEVELOPMENT_EDGE_TO_EDGE_20260826.md)
 - [通知・App Links・Play Storeの次段階](docs/FUTURE_ROADMAP.md)
 - [今回の検証結果](docs/VERIFICATION_REPORT.md)
 
@@ -137,4 +138,4 @@ Web版変更時は、認証/Cookie、外部ホスト、ファイルinput、マ�
 - Android 13以降の通知権限は、認証済み画面が表示された自然なタイミングで一度だけ要求します。通知Channelは `munitter_notifications`、badge許可はChannel作成時に有効化します。
 - 実アカウントを使うメール/Xログイン、投稿、DM、Spacesマイク、バックグラウンド復帰、回転、低速通信は実機チェックリストで確認してください。
 - WebViewの `MediaRecorder` がSpacesのAAC/MP4を提供できるかは端末とSystem WebViewの版に依存します。
-- 本リポジトリ作成環境にはAndroid Studio、エミュレーター、接続済み端末がなかったため、Android実機での成功は主張していません。
+- Android DevelopmentのEdge-to-Edge、主要5画面、3ボタン/gesture navigation、IME、foreground復帰はA57で確認済みです。認証、全メディアchooser、Spaces、低速・障害系など未実施項目は実機チェックリストどおり未確認として扱います。

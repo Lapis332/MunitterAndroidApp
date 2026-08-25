@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -58,6 +59,7 @@ fun MunitterScreen(
     state: WebUiState,
     navigationHeaderSnapshot: Bitmap? = null,
     startupOverlayVisible: Boolean = false,
+    webViewDrawsBehindSystemBars: Boolean = false,
     onRetry: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -75,12 +77,16 @@ fun MunitterScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        Box(
-            modifier = Modifier
+        val webContentModifier = if (webViewDrawsBehindSystemBars) {
+            Modifier.fillMaxSize()
+        } else {
+            Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing)
-                .imePadding(),
-        ) {
+                .imePadding()
+        }
+
+        Box(modifier = webContentModifier) {
             if (webView != null) {
                 AndroidView(
                     factory = {
@@ -98,6 +104,9 @@ fun MunitterScreen(
             }
 
             if (navigationHeaderSnapshot != null && state.hasVisibleContent) {
+                val snapshotHeight = with(LocalDensity.current) {
+                    navigationHeaderSnapshot.height.toDp()
+                }
                 Image(
                     bitmap = navigationHeaderSnapshot.asImageBitmap(),
                     contentDescription = null,
@@ -105,7 +114,7 @@ fun MunitterScreen(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .fillMaxWidth()
-                        .height(56.dp)
+                        .height(snapshotHeight)
                         .testTag(NAVIGATION_HEADER_SNAPSHOT_TEST_TAG),
                 )
             }
