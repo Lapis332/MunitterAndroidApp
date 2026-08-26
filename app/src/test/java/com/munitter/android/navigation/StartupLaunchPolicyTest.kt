@@ -40,23 +40,10 @@ class StartupLaunchPolicyTest {
     }
 
     @Test
-    fun `preserved Development session requires the exact non-empty cookie`() {
-        assertTrue(
-            StartupLaunchPolicy.hasPreservedDevelopmentSession(
-                "theme=dark; __Host-MunitterSessionToken=session-value; locale=ja",
-            ),
-        )
-        assertFalse(
-            StartupLaunchPolicy.hasPreservedDevelopmentSession(
-                "theme=dark; __Host-MunitterSessionToken=; locale=ja",
-            ),
-        )
-        assertFalse(
-            StartupLaunchPolicy.hasPreservedDevelopmentSession(
-                "__Host-MunitterSessionTokenBackup=session-value",
-            ),
-        )
-        assertFalse(StartupLaunchPolicy.hasPreservedDevelopmentSession(null))
+    fun `known Development session fast path requires both policy and prior authentication`() {
+        assertTrue(StartupLaunchPolicy.shouldUseKnownDevelopmentSession(true, true))
+        assertFalse(StartupLaunchPolicy.shouldUseKnownDevelopmentSession(true, false))
+        assertFalse(StartupLaunchPolicy.shouldUseKnownDevelopmentSession(false, true))
     }
 
     @Test

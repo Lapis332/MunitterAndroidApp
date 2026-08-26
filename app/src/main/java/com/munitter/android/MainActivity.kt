@@ -91,6 +91,9 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     private var notificationInfrastructureInitialized = false
     private var activityResumed = false
     private var developmentSessionFastPathPendingRecovery = false
+    private val developmentSessionState by lazy {
+        getSharedPreferences(DEVELOPMENT_SESSION_STATE_PREFERENCES, MODE_PRIVATE)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         activityCreatedAt = SystemClock.uptimeMillis()
@@ -351,6 +354,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
                     BuildConfig.INTERNAL_HOST,
                 )
             ) {
+                rememberDevelopmentAuthenticatedSession(false)
                 android.util.Log.d(
                     TAG,
                     "Development session fast path reached authentication entry point; " +
@@ -362,6 +366,14 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
                 )
                 return
             }
+        }
+
+        if (isDevelopmentDebugBuild() &&
+            !StartupLaunchPolicy.isDevelopmentAuthenticationEntryPoint(
+                webView.url,
+                BuildConfig.INTERNAL_HOST,
+            )) {
+            rememberDevelopmentAuthenticatedSession(true)
         }
 
         uiState = uiState.copy(
@@ -535,6 +547,11 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         }
 
         val headers = debugClientHeaders()
+        android.util.Log.d(
+            TAG,
+            "WebView navigation requested activityElapsedMs=${activityElapsedMs()} " +
+                "debugHeaders=${headers.isNotEmpty()}",
+        )
         if (headers.isEmpty()) {
             activeWebView.loadUrl(rawUrl)
             return
@@ -553,15 +570,14 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             return
         }
 
-        val cookieHeader = runCatching {
-            CookieManager.getInstance().getCookie(BuildConfig.BASE_URL)
-        }.getOrNull()
-        if (allowSessionFastPath &&
-            StartupLaunchPolicy.hasPreservedDevelopmentSession(cookieHeader)) {
+        if (StartupLaunchPolicy.shouldUseKnownDevelopmentSession(
+                allowSessionFastPath,
+                hasKnownDevelopmentAuthenticatedSession(),
+            )) {
             developmentSessionFastPathPendingRecovery = true
             android.util.Log.d(
                 TAG,
-                "Development debug bootstrap skipped reason=preserved-session-cookie " +
+                "Development debug bootstrap skipped reason=known-authenticated-session " +
                     "activityElapsedMs=${activityElapsedMs()}",
             )
             loadUrlWithDebugHeaders(targetUrl)
@@ -589,6 +605,9 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
                     "Development debug bootstrap failed; proceeding with normal login flow.",
                 )
             }
+            if (bootstrapped) {
+                rememberDevelopmentAuthenticatedSession(true)
+            }
 
             withContext(Dispatchers.Main) {
                 loadUrlWithDebugHeaders(targetUrl)
@@ -606,6 +625,25 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
 
         val host = runCatching { android.net.Uri.parse(rawUrl).host }.getOrNull()
         return host != null && host.equals(BuildConfig.INTERNAL_HOST, ignoreCase = true)
+    }
+
+    private fun isDevelopmentDebugBuild(): Boolean =
+        BuildConfig.DEBUG &&
+            BuildConfig.BUILD_TYPE.equals("debug", ignoreCase = true) &&
+            BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)
+
+    private fun hasKnownDevelopmentAuthenticatedSession(): Boolean =
+        isDevelopmentDebugBuild() &&
+            developmentSessionState.getBoolean(DEVELOPMENT_SESSION_AUTHENTICATED_KEY, false)
+
+    private fun rememberDevelopmentAuthenticatedSession(authenticated: Boolean) {
+        if (!isDevelopmentDebugBuild() ||
+            developmentSessionState.getBoolean(DEVELOPMENT_SESSION_AUTHENTICATED_KEY, false) == authenticated) {
+            return
+        }
+        developmentSessionState.edit()
+            .putBoolean(DEVELOPMENT_SESSION_AUTHENTICATED_KEY, authenticated)
+            .apply()
     }
 
     private suspend fun performDevelopmentDebugBootstrap(): Boolean =
@@ -754,6 +792,8 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     companion object {
         private const val STATE_WEBVIEW = "munitter.webview.state"
         private const val STATE_OAUTH_IN_PROGRESS = "munitter.oauth.in_progress"
+        private const val DEVELOPMENT_SESSION_STATE_PREFERENCES = "munitter.development.session-state"
+        private const val DEVELOPMENT_SESSION_AUTHENTICATED_KEY = "authenticated"
         private const val DEVELOPMENT_DEBUG_BOOTSTRAP_TIMEOUT_MS = 8_000
         private const val HEADER_SNAPSHOT_HEIGHT_DP = 56
         private const val FOREGROUND_NOTIFICATION_SYNC_INTERVAL_MS = 60_000L
