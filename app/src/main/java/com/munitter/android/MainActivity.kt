@@ -28,6 +28,7 @@ import com.munitter.android.navigation.NavigationCoordinator
 import com.munitter.android.navigation.NavigationPolicy
 import com.munitter.android.navigation.NavigationTarget
 import com.munitter.android.navigation.OAuthNavigationState
+import com.munitter.android.navigation.StartupLaunchPolicy
 import com.munitter.android.ui.MunitterScreen
 import com.munitter.android.ui.MunitterTheme
 import com.munitter.android.ui.DevelopmentEdgeToEdge
@@ -84,6 +85,12 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     private var pendingNotificationPermissionUrl: String? = null
     private var pendingNotificationPermissionRequest: Runnable? = null
     private var activityCreatedAt = 0L
+    private val deferNotificationWorkUntilStartupPresentation =
+        BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)
+    private var notificationStartupReleased = !deferNotificationWorkUntilStartupPresentation
+    private var notificationInfrastructureInitialized = false
+    private var activityResumed = false
+    private var developmentSessionFastPathPendingRecovery = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         activityCreatedAt = SystemClock.uptimeMillis()
@@ -100,8 +107,9 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         )
 
         notificationCenter = MunitterNotificationCenter(this)
-        NotificationSyncScheduler.schedule(this)
-        initializeDevelopmentFcm()
+        if (notificationStartupReleased) {
+            initializeNotificationInfrastructure()
+        }
 
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
@@ -122,9 +130,6 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         downloads = SecureDownloadCoordinator(this, BuildConfig.INTERNAL_HOST)
         nativeImageShare = NativeImageShareCoordinator(this, BuildConfig.INTERNAL_HOST)
 
-        val candidate = runCatching { WebView(this) }.getOrNull()
-        webView = candidate
-
         val externalNavigator = ExternalNavigator(
             activity = this,
             navigationPolicy = navigationPolicy,
@@ -137,40 +142,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             openInternalUrl = { url -> loadUrlWithDebugHeaders(url) },
         )
         fullscreen = FullscreenMediaController(this) { webView }
-
-        if (candidate != null) {
-            val client = MunitterWebViewClient(
-                context = this,
-                internalHost = BuildConfig.INTERNAL_HOST,
-                navigationCoordinator = navigationCoordinator,
-                oauthState = oauthState,
-                startupPresentationEnabled = BuildConfig.ENABLE_STARTUP_OVERLAY,
-                callbacks = this,
-            )
-            munitterWebViewClient = client
-            val chromeClient = MunitterWebChromeClient(
-                fileChooser = fileChooser,
-                permissions = permissions,
-                fullscreen = fullscreen,
-                navigationCoordinator = navigationCoordinator,
-                onProgressChanged = ::updateProgress,
-            )
-            WebViewConfigurator.configure(
-                webView = candidate,
-                webViewClient = client,
-                webChromeClient = chromeClient,
-                onDownload = downloads::requestDownload,
-            )
-            nativeImageShare.attach(candidate)
-        } else {
-            if (startupOverlayController.onWebViewUnavailable()) {
-                startupOverlayVisible = false
-            }
-            uiState = WebUiState(
-                isLoading = false,
-                failure = WebFailureKind.WEBVIEW_UNAVAILABLE,
-            )
-        }
+        initializeWebView(savedInstanceState, intent?.dataString)
 
         setContent {
             MunitterTheme {
@@ -185,17 +157,67 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
                 )
             }
         }
+    }
 
-        if (candidate != null) {
-            val restored = savedInstanceState
-                ?.getBundle(STATE_WEBVIEW)
-                ?.let(candidate::restoreState) != null
-            if (!restored) {
-                attemptDevelopmentDebugBootstrap(resolveLaunchUrl(intent?.dataString))
-            } else if (BuildConfig.ENABLE_STARTUP_OVERLAY) {
-                munitterWebViewClient?.observeRestoredState(candidate)
-            }
+    private fun initializeWebView(savedInstanceState: Bundle?, requestedUrl: String?) {
+        val constructorStartedAt = activityElapsedMs()
+        val candidate = runCatching { WebView(this) }.getOrNull()
+        webView = candidate
+        if (deferNotificationWorkUntilStartupPresentation) {
+            android.util.Log.d(
+                TAG,
+                "WebView constructed activityElapsedMs=${activityElapsedMs()} " +
+                    "constructorMs=${activityElapsedMs() - constructorStartedAt}",
+            )
         }
+        if (candidate == null) {
+            showWebViewUnavailable()
+            return
+        }
+
+        val client = MunitterWebViewClient(
+            context = this,
+            internalHost = BuildConfig.INTERNAL_HOST,
+            navigationCoordinator = navigationCoordinator,
+            oauthState = oauthState,
+            startupPresentationEnabled = BuildConfig.ENABLE_STARTUP_OVERLAY,
+            callbacks = this,
+        )
+        munitterWebViewClient = client
+        val chromeClient = MunitterWebChromeClient(
+            fileChooser = fileChooser,
+            permissions = permissions,
+            fullscreen = fullscreen,
+            navigationCoordinator = navigationCoordinator,
+            onProgressChanged = ::updateProgress,
+        )
+        WebViewConfigurator.configure(
+            webView = candidate,
+            webViewClient = client,
+            webChromeClient = chromeClient,
+            onDownload = downloads::requestDownload,
+        )
+        nativeImageShare.attach(candidate)
+
+        val restored = savedInstanceState
+            ?.getBundle(STATE_WEBVIEW)
+            ?.let(candidate::restoreState) != null
+        if (!restored) {
+            attemptDevelopmentDebugBootstrap(resolveLaunchUrl(requestedUrl))
+        } else if (BuildConfig.ENABLE_STARTUP_OVERLAY) {
+            munitterWebViewClient?.observeRestoredState(candidate)
+        }
+    }
+
+    private fun showWebViewUnavailable() {
+        if (startupOverlayController.onWebViewUnavailable()) {
+            startupOverlayVisible = false
+        }
+        uiState = WebUiState(
+            isLoading = false,
+            failure = WebFailureKind.WEBVIEW_UNAVAILABLE,
+        )
+        releaseNotificationStartupWork("webview-unavailable")
     }
 
     override fun onNewIntent(intent: android.content.Intent) {
@@ -220,20 +242,17 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
 
     override fun onResume() {
         super.onResume()
+        activityResumed = true
         webView?.onResume()
-        if (BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)) {
+        if (notificationStartupReleased &&
+            BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)) {
             lifecycleScope.launch { FcmTokenRegistrar(this@MainActivity).registerIfPossible() }
         }
-        notificationSyncJob?.cancel()
-        notificationSyncJob = lifecycleScope.launch {
-            while (true) {
-                NotificationSyncEngine(this@MainActivity).sync()
-                delay(FOREGROUND_NOTIFICATION_SYNC_INTERVAL_MS)
-            }
-        }
+        startForegroundNotificationSyncIfReady()
     }
 
     override fun onPause() {
+        activityResumed = false
         notificationSyncJob?.cancel()
         notificationSyncJob = null
         CookieManager.getInstance().flush()
@@ -281,6 +300,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     override fun onStartupPresentationReady(webView: WebView, generation: Long) {
         if (!startupOverlayController.onPresentationReady(generation)) return
         startupOverlayVisible = false
+        releaseNotificationStartupWork("presentation-ready")
         android.util.Log.d(
             TAG,
             "Startup overlay fade started generation=$generation activityElapsedMs=${activityElapsedMs()}",
@@ -291,6 +311,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     override fun onStartupNavigationFailed(generation: Long?) {
         if (!startupOverlayController.onNavigationFailed(generation)) return
         startupOverlayVisible = false
+        releaseNotificationStartupWork("navigation-failed")
         pendingNotificationPermissionRequest?.let { request -> webView?.removeCallbacks(request) }
         pendingNotificationPermissionRequest = null
         pendingNotificationPermissionUrl = null
@@ -323,13 +344,70 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     }
 
     override fun onPageFinished(webView: WebView) {
+        if (developmentSessionFastPathPendingRecovery) {
+            developmentSessionFastPathPendingRecovery = false
+            if (StartupLaunchPolicy.isDevelopmentAuthenticationEntryPoint(
+                    webView.url,
+                    BuildConfig.INTERNAL_HOST,
+                )
+            ) {
+                android.util.Log.d(
+                    TAG,
+                    "Development session fast path reached authentication entry point; " +
+                        "running fallback bootstrap activityElapsedMs=${activityElapsedMs()}",
+                )
+                attemptDevelopmentDebugBootstrap(
+                    StartupLaunchPolicy.defaultUrl(BuildConfig.BASE_URL, BuildConfig.ENVIRONMENT),
+                    allowSessionFastPath = false,
+                )
+                return
+            }
+        }
+
         uiState = uiState.copy(
             isLoading = false,
             hasVisibleContent = true,
         )
         requestNotificationPermissionWhenStartupAllows(webView, webView.url)
-        if (BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)) {
+        if (!BuildConfig.ENABLE_STARTUP_OVERLAY) {
+            releaseNotificationStartupWork("page-finished")
+        }
+        if (notificationStartupReleased &&
+            BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)) {
             lifecycleScope.launch { FcmTokenRegistrar(this@MainActivity).registerIfPossible() }
+        }
+    }
+
+    private fun releaseNotificationStartupWork(reason: String) {
+        if (!notificationStartupReleased) {
+            notificationStartupReleased = true
+            android.util.Log.d(
+                TAG,
+                "Startup-deferred notification work released reason=$reason " +
+                    "activityElapsedMs=${activityElapsedMs()}",
+            )
+        }
+        initializeNotificationInfrastructure()
+        startForegroundNotificationSyncIfReady()
+    }
+
+    private fun initializeNotificationInfrastructure() {
+        if (notificationInfrastructureInitialized) return
+        notificationInfrastructureInitialized = true
+        NotificationSyncScheduler.schedule(this)
+        initializeDevelopmentFcm()
+    }
+
+    private fun startForegroundNotificationSyncIfReady() {
+        if (!notificationStartupReleased || !activityResumed || notificationSyncJob?.isActive == true) {
+            return
+        }
+
+        notificationSyncJob = lifecycleScope.launch {
+            while (true) {
+                NotificationSyncEngine(this@MainActivity).sync()
+                delay(FOREGROUND_NOTIFICATION_SYNC_INTERVAL_MS)
+            }
         }
     }
 
@@ -446,7 +524,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         return if (decision.target == NavigationTarget.INTERNAL) {
             decision.uri.toString()
         } else {
-            BuildConfig.BASE_URL
+            StartupLaunchPolicy.defaultUrl(BuildConfig.BASE_URL, BuildConfig.ENVIRONMENT)
         }
     }
 
@@ -465,15 +543,46 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         activeWebView.loadUrl(rawUrl, headers)
     }
 
-    private fun attemptDevelopmentDebugBootstrap(rawUrl: String?) {
+    private fun attemptDevelopmentDebugBootstrap(
+        rawUrl: String?,
+        allowSessionFastPath: Boolean = true,
+    ) {
         val targetUrl = rawUrl ?: BuildConfig.BASE_URL
         if (!canAttemptDevelopmentDebugBootstrap(targetUrl)) {
             loadUrlWithDebugHeaders(targetUrl)
             return
         }
 
+        val cookieHeader = runCatching {
+            CookieManager.getInstance().getCookie(BuildConfig.BASE_URL)
+        }.getOrNull()
+        if (allowSessionFastPath &&
+            StartupLaunchPolicy.hasPreservedDevelopmentSession(cookieHeader)) {
+            developmentSessionFastPathPendingRecovery = true
+            android.util.Log.d(
+                TAG,
+                "Development debug bootstrap skipped reason=preserved-session-cookie " +
+                    "activityElapsedMs=${activityElapsedMs()}",
+            )
+            loadUrlWithDebugHeaders(targetUrl)
+            return
+        }
+
+        developmentSessionFastPathPendingRecovery = false
+
+        val bootstrapStartedAt = activityElapsedMs()
+        android.util.Log.d(
+            TAG,
+            "Development debug bootstrap started activityElapsedMs=$bootstrapStartedAt",
+        )
         lifecycleScope.launch {
-            val bootstrapped = runCatching { performDevelopmentDebugBootstrap(targetUrl) }.getOrDefault(false)
+            val bootstrapped = runCatching { performDevelopmentDebugBootstrap() }.getOrDefault(false)
+            android.util.Log.d(
+                TAG,
+                "Development debug bootstrap completed success=$bootstrapped " +
+                    "activityElapsedMs=${activityElapsedMs()} " +
+                    "elapsedMs=${activityElapsedMs() - bootstrapStartedAt}",
+            )
             if (!bootstrapped) {
                 android.util.Log.w(
                     TAG,
@@ -499,9 +608,9 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         return host != null && host.equals(BuildConfig.INTERNAL_HOST, ignoreCase = true)
     }
 
-    private suspend fun performDevelopmentDebugBootstrap(baseUrl: String): Boolean =
+    private suspend fun performDevelopmentDebugBootstrap(): Boolean =
         withContext(Dispatchers.IO) {
-            val endpointBase = baseUrl.trimEnd('/')
+            val endpointBase = BuildConfig.BASE_URL.trimEnd('/')
             val bootstrapEndpoint = "$endpointBase/internal/dev-test-auth/bootstrap"
 
             val bootstrapResponse = postDevelopmentDebugRequest(
@@ -519,7 +628,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
                 return@withContext false
             }
 
-            applyBootstrapCookies(baseUrl, bootstrapResponse.setCookieHeaders)
+            applyBootstrapCookies(BuildConfig.BASE_URL, bootstrapResponse.setCookieHeaders)
         }
 
     private fun applyBootstrapCookies(baseUrl: String, setCookieHeaders: List<String>): Boolean {
