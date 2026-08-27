@@ -3,6 +3,7 @@ package com.munitter.android.ui
 import android.view.ViewGroup
 import android.graphics.Bitmap
 import android.webkit.WebView
+import androidx.activity.BackEventCompat
 import androidx.activity.ExperimentalActivityApi
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -62,11 +63,25 @@ fun MunitterScreen(
     webViewDrawsBehindSystemBars: Boolean = false,
     onRetry: () -> Unit,
     onBack: () -> Unit,
+    onEdgeNavigation: (swipeEdge: Int) -> Unit = { onBack() },
 ) {
     PredictiveBackHandler(enabled = true) { progress ->
         try {
-            progress.collect()
-            onBack()
+            var gestureStartEdge: Int? = null
+            progress.collect { event ->
+                // Latch ownership from the first platform sample. Even if a
+                // future platform emitted an inconsistent later sample, one
+                // gesture must never hand off to the opposite history owner.
+                if (gestureStartEdge == null) {
+                    gestureStartEdge = event.swipeEdge
+                }
+            }
+            val completedSwipeEdge = gestureStartEdge ?: BackEventCompat.EDGE_NONE
+            if (completedSwipeEdge == BackEventCompat.EDGE_NONE) {
+                onBack()
+            } else {
+                onEdgeNavigation(completedSwipeEdge)
+            }
         } catch (_: CancellationException) {
             // A cancelled predictive gesture must not trigger navigation.
         }
