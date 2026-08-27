@@ -12,6 +12,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
+import androidx.activity.BackEventCompat
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -23,6 +24,9 @@ import com.munitter.android.media.FileChooserCoordinator
 import com.munitter.android.media.NativeImageShareCoordinator
 import com.munitter.android.navigation.BackNavigationDecider
 import com.munitter.android.navigation.BackNavigationDecision
+import com.munitter.android.navigation.HorizontalHistoryGestureEdge
+import com.munitter.android.navigation.HorizontalHistoryNavigationDecider
+import com.munitter.android.navigation.HorizontalHistoryNavigationDecision
 import com.munitter.android.navigation.ExternalNavigator
 import com.munitter.android.navigation.NavigationCoordinator
 import com.munitter.android.navigation.NavigationPolicy
@@ -157,6 +161,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
                     webViewDrawsBehindSystemBars = developmentEdgeToEdgeEnabled,
                     onRetry = ::retry,
                     onBack = ::handleBack,
+                    onEdgeNavigation = ::handleEdgeNavigation,
                 )
             }
         }
@@ -528,6 +533,37 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             BackNavigationDecision.CLOSE_FULLSCREEN -> fullscreen.hide()
             BackNavigationDecision.WEBVIEW_BACK -> webView?.goBack()
             BackNavigationDecision.FINISH_ACTIVITY -> finishAfterTransition()
+        }
+    }
+
+    private fun handleEdgeNavigation(swipeEdge: Int) {
+        // Production retains its existing Android back behavior. The formal
+        // bidirectional edge-history contract is enabled only for Development.
+        if (!BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)) {
+            handleBack()
+            return
+        }
+
+        val edge = when (swipeEdge) {
+            BackEventCompat.EDGE_LEFT -> HorizontalHistoryGestureEdge.LEFT
+            BackEventCompat.EDGE_RIGHT -> HorizontalHistoryGestureEdge.RIGHT
+            else -> {
+                handleBack()
+                return
+            }
+        }
+        when (
+            HorizontalHistoryNavigationDecider.decide(
+                edge = edge,
+                isFullscreenMedia = fullscreen.isShowing,
+                canWebViewGoBack = webView?.canGoBack() == true,
+                canWebViewGoForward = webView?.canGoForward() == true,
+            )
+        ) {
+            HorizontalHistoryNavigationDecision.CLOSE_FULLSCREEN -> fullscreen.hide()
+            HorizontalHistoryNavigationDecision.WEBVIEW_BACK -> webView?.goBack()
+            HorizontalHistoryNavigationDecision.WEBVIEW_FORWARD -> webView?.goForward()
+            HorizontalHistoryNavigationDecision.NO_OP -> Unit
         }
     }
 
