@@ -64,26 +64,38 @@ fun MunitterScreen(
     onRetry: () -> Unit,
     onBack: () -> Unit,
     onEdgeNavigation: (swipeEdge: Int) -> Unit = { onBack() },
+    onEdgeNavigationStart: suspend (swipeEdge: Int) -> Boolean = { false },
+    onEdgeNavigationProgress: (swipeEdge: Int, progress: Float) -> Unit = { _, _ -> },
+    onEdgeNavigationComplete: (swipeEdge: Int) -> Unit = {},
+    onEdgeNavigationCancel: (swipeEdge: Int) -> Unit = {},
 ) {
     PredictiveBackHandler(enabled = true) { progress ->
+        var gestureStartEdge: Int? = null
+        var webOwned = false
         try {
-            var gestureStartEdge: Int? = null
             progress.collect { event ->
                 // Latch ownership from the first platform sample. Even if a
                 // future platform emitted an inconsistent later sample, one
                 // gesture must never hand off to the opposite history owner.
                 if (gestureStartEdge == null) {
                     gestureStartEdge = event.swipeEdge
+                    webOwned = onEdgeNavigationStart(event.swipeEdge)
+                }
+                if (webOwned) {
+                    onEdgeNavigationProgress(gestureStartEdge, event.progress)
                 }
             }
             val completedSwipeEdge = gestureStartEdge ?: BackEventCompat.EDGE_NONE
-            if (completedSwipeEdge == BackEventCompat.EDGE_NONE) {
+            if (webOwned) {
+                onEdgeNavigationComplete(completedSwipeEdge)
+            } else if (completedSwipeEdge == BackEventCompat.EDGE_NONE) {
                 onBack()
             } else {
                 onEdgeNavigation(completedSwipeEdge)
             }
         } catch (_: CancellationException) {
             // A cancelled predictive gesture must not trigger navigation.
+            gestureStartEdge?.let(onEdgeNavigationCancel)
         }
     }
 

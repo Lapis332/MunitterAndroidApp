@@ -33,6 +33,7 @@ import com.munitter.android.navigation.NavigationPolicy
 import com.munitter.android.navigation.NavigationTarget
 import com.munitter.android.navigation.OAuthNavigationState
 import com.munitter.android.navigation.StartupLaunchPolicy
+import com.munitter.android.navigation.SettingsInteractiveBackPolicy
 import com.munitter.android.ui.MunitterScreen
 import com.munitter.android.ui.MunitterTheme
 import com.munitter.android.ui.DevelopmentEdgeToEdge
@@ -59,10 +60,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlin.coroutines.resume
 
 class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     private val developmentEdgeToEdgeEnabled =
@@ -162,6 +165,10 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
                     onRetry = ::retry,
                     onBack = ::handleBack,
                     onEdgeNavigation = ::handleEdgeNavigation,
+                    onEdgeNavigationStart = ::beginSettingsInteractiveBack,
+                    onEdgeNavigationProgress = ::updateSettingsInteractiveBack,
+                    onEdgeNavigationComplete = ::completeSettingsInteractiveBack,
+                    onEdgeNavigationCancel = ::cancelSettingsInteractiveBack,
                 )
             }
         }
@@ -566,6 +573,72 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             HorizontalHistoryNavigationDecision.NO_OP -> Unit
         }
     }
+
+    private suspend fun beginSettingsInteractiveBack(swipeEdge: Int): Boolean {
+        if (fullscreen.isShowing) return false
+        val edge = horizontalHistoryEdge(swipeEdge) ?: return false
+        val activeWebView = webView ?: return false
+        if (!SettingsInteractiveBackPolicy.canAttempt(
+                environment = BuildConfig.ENVIRONMENT,
+                internalHost = BuildConfig.INTERNAL_HOST,
+                currentUrl = activeWebView.url,
+                edge = edge,
+            )
+        ) {
+            return false
+        }
+        return evaluateJavascriptBoolean(
+            activeWebView,
+            SettingsInteractiveBackPolicy.BEGIN_SCRIPT,
+        )
+    }
+
+    private fun updateSettingsInteractiveBack(swipeEdge: Int, progress: Float) {
+        if (!BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)) return
+        if (horizontalHistoryEdge(swipeEdge) != HorizontalHistoryGestureEdge.LEFT) return
+        evaluateSettingsInteractiveBackScript(SettingsInteractiveBackPolicy.progressScript(progress))
+    }
+
+    private fun completeSettingsInteractiveBack(swipeEdge: Int) {
+        if (!BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)) return
+        if (horizontalHistoryEdge(swipeEdge) != HorizontalHistoryGestureEdge.LEFT) return
+        evaluateSettingsInteractiveBackScript(SettingsInteractiveBackPolicy.COMPLETE_SCRIPT)
+    }
+
+    private fun cancelSettingsInteractiveBack(swipeEdge: Int) {
+        if (!BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)) return
+        if (horizontalHistoryEdge(swipeEdge) != HorizontalHistoryGestureEdge.LEFT) return
+        evaluateSettingsInteractiveBackScript(SettingsInteractiveBackPolicy.CANCEL_SCRIPT)
+    }
+
+    private fun horizontalHistoryEdge(swipeEdge: Int): HorizontalHistoryGestureEdge? =
+        when (swipeEdge) {
+            BackEventCompat.EDGE_LEFT -> HorizontalHistoryGestureEdge.LEFT
+            BackEventCompat.EDGE_RIGHT -> HorizontalHistoryGestureEdge.RIGHT
+            else -> null
+        }
+
+    private fun evaluateSettingsInteractiveBackScript(script: String) {
+        val activeWebView = webView ?: return
+        runCatching { activeWebView.evaluateJavascript(script, null) }
+            .onFailure { error ->
+                android.util.Log.w(TAG, "Settings interactive back bridge failed", error)
+            }
+    }
+
+    private suspend fun evaluateJavascriptBoolean(activeWebView: WebView, script: String): Boolean =
+        suspendCancellableCoroutine { continuation ->
+            try {
+                activeWebView.evaluateJavascript(script) { rawResult ->
+                    if (!continuation.isActive) return@evaluateJavascript
+                    val normalized = rawResult?.trim()?.removeSurrounding("\"")
+                    continuation.resume(normalized.equals("true", ignoreCase = true))
+                }
+            } catch (error: RuntimeException) {
+                android.util.Log.w(TAG, "Settings interactive back ownership probe failed", error)
+                if (continuation.isActive) continuation.resume(false)
+            }
+        }
 
     private fun resolveLaunchUrl(rawUrl: String?): String {
         val decision = navigationPolicy.classify(rawUrl, oauthInProgress = false)
