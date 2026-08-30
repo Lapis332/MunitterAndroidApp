@@ -18,16 +18,21 @@
 
 ## 1. 導入と初回起動
 
+- [ ] `むにったー DEV`と`むにったー`を同時にインストールでき、片方が他方を置換しない。
+- [ ] Development iconの小型`DEV` badgeをHome画面で識別でき、Production iconにbadgeがない。
 - [ ] APK を A57 にインストールできる。
 - [ ] アプリ名、アイコン、Development / Production の区別が正しい。
 - [ ] 初回起動で白画面が長く出ず、自然なローディング表示から Web へ移る。
 - [ ] Development が `https://dev.munitter.com` を開く。
 - [ ] HTTP、SSL 警告、mixed content の許可を求められない。
+- [ ] Production が `https://munitter.com`だけを開き、Developmentへfallbackしない。
+- [ ] Development が `https://dev.munitter.com`だけを開き、Productionへfallbackしない。
 - [ ] ステータスバー、ナビゲーションバー、下部 Web ナビが重ならない。
 - [ ] WebView のバージョンと接続先を、秘密情報なしで試験記録へ残す。
 
 ## 2. 認証
 
+- [ ] 両appへ別々にloginし、片方のCookie/sessionが他方へ現れない。
 - [ ] メールログインを完了できる。
 - [ ] Turnstile が表示され、challenge を含め完了できる。
 - [ ] サードパーティ Cookie 無効の既定設定で Turnstile を完了できる。
@@ -37,6 +42,7 @@
 - [ ] アプリを終了・再起動してもログイン状態を維持する。
 - [ ] バックグラウンド復帰後もログイン状態を維持する。
 - [ ] ログアウトでセッションが終了し、再ログインできる。
+- [ ] 片方のlogoutが他方のsessionを終了させない。
 - [ ] 認証途中の回転・バックグラウンド復帰で二重送信や無限リロードが起きない。
 
 ## 3. Home、プロフィール、戻る操作

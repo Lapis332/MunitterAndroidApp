@@ -3,7 +3,7 @@
 既存のむにったーWeb版を唯一のUI・機能本体として表示する、Kotlin + Jetpack Compose + WebViewの薄いAndroidシェルです。投稿一覧やプロフィール等をAndroid側へ二重実装していません。
 
 > [!IMPORTANT]
-> Production正式Application IDは `com.munitter.android` です。既存DevelopmentのインストールとFirebase登録を壊さないため、Developmentだけは従来の `com.munitter.android.provisional.development` 系を維持します。Production release署名は別途確定が必要です。
+> DevelopmentとProductionは同じ端末へ常時共存させます。Productionは`com.munitter.android`、Developmentは`com.munitter.android.development`（Debugは`.debug`）で、endpoint、Firebase、署名、storageをbuild時に固定・分離します。正式matrixは[Development / Production共存運用](docs/ENVIRONMENT_MATRIX.md)を参照してください。
 
 ## 構成
 
@@ -22,12 +22,11 @@ AGP 9.x / API 37 previewへ追随するより、インストール済みの安�
 
 | Variant | 接続先 | WebViewデバッグ | Application ID |
 |---|---|---:|---|
-| `developmentDebug` | `https://dev.munitter.com/` | 有効 | `com.munitter.android.provisional.development.debug` |
-| `developmentRelease` | `https://dev.munitter.com/` | 有効 | `com.munitter.android.provisional.development` |
-| `productionDebug` | `https://munitter.com/` | 無効 | `com.munitter.android.debug` |
+| `developmentDebug` | `https://dev.munitter.com/` | 有効 | `com.munitter.android.development.debug` |
+| `developmentRelease` | `https://dev.munitter.com/` | 有効 | `com.munitter.android.development` |
 | `productionRelease` | `https://munitter.com/` | 無効 | `com.munitter.android` |
 
-URL、内部ホスト、環境名、デバッグ可否は[app/build.gradle.kts](app/build.gradle.kts)のProduct Flavorへ集約しています。実行時設定やユーザー入力でproduction接続先を切り替える構造にはしていません。
+`productionDebug`は安全上生成しません。URL、内部ホスト、環境名、デバッグ可否は[app/build.gradle.kts](app/build.gradle.kts)のProduct Flavorへ集約し、実行時設定やユーザー入力では切り替えません。
 
 ## Android Studioで開く
 
@@ -48,26 +47,32 @@ PowerShell例:
 $env:JAVA_HOME = 'C:\Program Files\Android\openjdk\jdk-21.0.8'
 $env:ANDROID_HOME = 'C:\Program Files (x86)\Android\android-sdk'
 
-.\gradlew.bat testDevelopmentDebugUnitTest testProductionDebugUnitTest
-.\gradlew.bat lintDevelopmentDebug
-.\gradlew.bat assembleDevelopmentDebug
-.\gradlew.bat assembleProductionDebug
-.\gradlew.bat assembleProductionRelease
+.\tools\Invoke-MunitterAndroidSigning.ps1 -Mode Gradle -GradleArguments @(
+  'testDevelopmentDebugUnitTest',
+  'testDevelopmentReleaseUnitTest',
+  'testProductionReleaseUnitTest',
+  'lintDevelopmentDebug',
+  'assembleDevelopmentDebug',
+  'assembleDevelopmentRelease',
+  'assembleProductionRelease',
+  'bundleProductionRelease'
+)
 ```
 
 主要APK:
 
 - 実機確認用Development APK: `app\build\outputs\apk\development\debug\app-development-debug.apk`
-- production接続確認用Debug APK: `app\build\outputs\apk\production\debug\app-production-debug.apk`
-- 署名前release APK: `app\build\outputs\apk\production\release\app-production-release-unsigned.apk`
+- 正式Development APK: `app\build\outputs\apk\development\release\app-development-release.apk`
+- 正式Production APK: `app\build\outputs\apk\production\release\app-production-release.apk`
+- Play upload用Production AAB: `app\build\outputs\bundle\productionRelease\app-production-release.aab`
 
-署名前release APKはそのまま端末へインストールできません。正式署名を確定するまではDevelopment Debug APKを使用してください。
+署名materialはrepository外のDPAPI保護領域からwrapperがprocess環境へ一時注入します。秘密値をGradle propertyやコマンドラインへ渡さないでください。
 
 ## A57向け Development Smoke
 
 - 前提: A57 (`SM_A576Q` / `a57x` / product `a57xjpn`) にワイヤレスADBで接続済み
 - 実行: `.\scripts\Invoke-A57DevelopmentSmoke.ps1`
-- 対象: `developmentDebug` (`com.munitter.android.provisional.development.debug`)
+- 対象: `developmentDebug` (`com.munitter.android.development.debug`)
 - 自動確認:
   - `developmentDebug` APKビルド
   - 対象端末の厳密マッチング
@@ -125,6 +130,7 @@ UI、投稿/DM処理、認証、CSRF、SignalR、アップロード制限、メ�
 - [Web契約監査](docs/WEB_CONTRACT_AUDIT.md)
 - [責務分離と設計](docs/ARCHITECTURE.md)
 - [Android A57実機チェックリスト](docs/DEVICE_TEST_CHECKLIST.md)
+- [Development / Production共存運用](docs/ENVIRONMENT_MATRIX.md)
 - [Android Development Edge-to-Edge実機報告](docs/DEVELOPMENT_EDGE_TO_EDGE_20260826.md)
 - [通知・App Links・Play Storeの次段階](docs/FUTURE_ROADMAP.md)
 - [今回の検証結果](docs/VERIFICATION_REPORT.md)
@@ -133,7 +139,7 @@ Web版変更時は、認証/Cookie、外部ホスト、ファイルinput、マ�
 
 ## 現時点の制約
 
-- App Linksは、release署名SHA-256と`/.well-known/assetlinks.json`が未確定のため未実装です。正式Application IDは確定済みです。
+- App Linksは環境別hostをmanifestで固定し、正式署名SHA-256とhost別`/.well-known/assetlinks.json`の整合を公開前gateとします。
 - Android OS通知は、既存の認証済みWeb通知APIを再利用するforeground同期（60秒）と、ネットワーク接続時のWorkManager同期（最短15分）で実装しています。FCMも環境別Firebase設定、認証付きtoken登録、ログアウト・アカウント切替時の無効化、通知表示を実装していますが、Production実配信はPrivate Production Validationまで無効です。
 - Android 13以降の通知権限は、認証済み画面が表示された自然なタイミングで一度だけ要求します。通知Channelは `munitter_notifications`、badge許可はChannel作成時に有効化します。
 - 実アカウントを使うメール/Xログイン、投稿、DM、Spacesマイク、バックグラウンド復帰、回転、低速通信は実機チェックリストで確認してください。

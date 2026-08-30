@@ -15,6 +15,7 @@ class NavigationCoordinator(
 
         return when (decision.target) {
             NavigationTarget.INTERNAL,
+            NavigationTarget.ACCESS_IN_WEBVIEW,
             NavigationTarget.OAUTH_IN_WEBVIEW,
             -> false
             NavigationTarget.EXTERNAL_BROWSER,
@@ -39,6 +40,7 @@ class NavigationCoordinator(
         oauthState.recordBeforeNavigation(decision.uri, decision.target)
         when (decision.target) {
             NavigationTarget.INTERNAL,
+            NavigationTarget.ACCESS_IN_WEBVIEW,
             NavigationTarget.OAUTH_IN_WEBVIEW,
             -> decision.uri?.toString()?.let { openInternalUrl(it) }
             NavigationTarget.EXTERNAL_BROWSER,
@@ -52,6 +54,7 @@ class NavigationCoordinator(
         val decision = policy.classify(rawUrl, oauthState.isInProgress)
         oauthState.recordBeforeNavigation(decision.uri, decision.target)
         return decision.target == NavigationTarget.INTERNAL ||
+            decision.target == NavigationTarget.ACCESS_IN_WEBVIEW ||
             decision.target == NavigationTarget.OAUTH_IN_WEBVIEW
     }
 }

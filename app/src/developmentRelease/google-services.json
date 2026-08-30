@@ -1,0 +1,67 @@
+{
+  "project_info": {
+    "project_number": "165957485379",
+    "project_id": "munitter-dev-fcm-2026-db973d",
+    "storage_bucket": "munitter-dev-fcm-2026-db973d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:165957485379:android:8282e07774856239b125f6",
+        "android_client_info": {
+          "package_name": "com.munitter.android.development"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDYK6hIImgHwD2fNizu7AkGb3V6VjV8wOQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:165957485379:android:46ca56d14c202e28b125f6",
+        "android_client_info": {
+          "package_name": "com.munitter.android.development.debug"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDYK6hIImgHwD2fNizu7AkGb3V6VjV8wOQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:165957485379:android:73a554f5f9d98726b125f6",
+        "android_client_info": {
+          "package_name": "com.munitter.android.provisional.development.debug"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDYK6hIImgHwD2fNizu7AkGb3V6VjV8wOQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

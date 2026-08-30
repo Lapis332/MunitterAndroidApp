@@ -1,3 +1,4 @@
+import groovy.json.JsonSlurper
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -7,14 +8,25 @@ plugins {
     alias(libs.plugins.google.services)
 }
 
-// Development Release is intentionally unregistered. Development Debug and
-// the explicitly registered Production variants use variant-scoped Firebase
-// configuration files so environment credentials cannot cross boundaries.
-tasks.matching { task ->
-    task.name.startsWith("processDevelopmentRelease") && task.name.endsWith("GoogleServices")
-}.configureEach {
-    enabled = false
-}
+val developmentFirebaseProject = "munitter-dev-fcm-2026-db973d"
+val productionFirebaseProject = "munitter-prod-fcm-2026-df60ow"
+val developmentApplicationId = "com.munitter.android.development"
+val productionApplicationId = "com.munitter.android"
+val developmentBaseUrl = "https://dev.munitter.com/"
+val productionBaseUrl = "https://munitter.com/"
+val developmentInternalHost = "dev.munitter.com"
+val productionInternalHost = "munitter.com"
+val productionCloudflareAccessHost = "munitter.cloudflareaccess.com"
+
+fun signingEnvironment(prefix: String): Map<String, String> = mapOf(
+    "storeFile" to providers.environmentVariable("MUNITTER_ANDROID_${prefix}_KEYSTORE").orNull.orEmpty(),
+    "storePassword" to providers.environmentVariable("MUNITTER_ANDROID_${prefix}_STORE_PASSWORD").orNull.orEmpty(),
+    "keyAlias" to providers.environmentVariable("MUNITTER_ANDROID_${prefix}_KEY_ALIAS").orNull.orEmpty(),
+    "keyPassword" to providers.environmentVariable("MUNITTER_ANDROID_${prefix}_KEY_PASSWORD").orNull.orEmpty(),
+)
+
+val developmentSigning = signingEnvironment("DEVELOPMENT")
+val productionSigning = signingEnvironment("PRODUCTION")
 
 android {
     namespace = "com.munitter.android"
@@ -22,7 +34,7 @@ android {
     buildToolsVersion = "36.0.0"
 
     defaultConfig {
-        applicationId = "com.munitter.android"
+        applicationId = productionApplicationId
         minSdk = 24
         targetSdk = 36
         versionCode = 1
@@ -36,20 +48,42 @@ android {
         buildConfigField("boolean", "ACCEPT_THIRD_PARTY_COOKIES", "false")
     }
 
+    signingConfigs {
+        create("development") {
+            if (developmentSigning.values.all(String::isNotBlank)) {
+                storeFile = file(developmentSigning.getValue("storeFile"))
+                storePassword = developmentSigning.getValue("storePassword")
+                keyAlias = developmentSigning.getValue("keyAlias")
+                keyPassword = developmentSigning.getValue("keyPassword")
+            }
+        }
+        create("production") {
+            if (productionSigning.values.all(String::isNotBlank)) {
+                storeFile = file(productionSigning.getValue("storeFile"))
+                storePassword = productionSigning.getValue("storePassword")
+                keyAlias = productionSigning.getValue("keyAlias")
+                keyPassword = productionSigning.getValue("keyPassword")
+            }
+        }
+    }
+
     flavorDimensions += "environment"
     productFlavors {
         create("development") {
             dimension = "environment"
-            // Preserve the installed Development identity and its existing
-            // Firebase registration while Production adopts the formal ID.
-            applicationId = "com.munitter.android.provisional.development"
+            applicationId = developmentApplicationId
             versionNameSuffix = "-development"
-            resValue("string", "app_name", "むにったー (開発)")
+            resValue("string", "app_name", "むにったー DEV")
             buildConfigField("String", "ENVIRONMENT", "\"development\"")
-            buildConfigField("String", "BASE_URL", "\"https://dev.munitter.com/\"")
-            buildConfigField("String", "INTERNAL_HOST", "\"dev.munitter.com\"")
+            buildConfigField("String", "BASE_URL", "\"$developmentBaseUrl\"")
+            buildConfigField("String", "INTERNAL_HOST", "\"$developmentInternalHost\"")
+            buildConfigField("String", "CLOUDFLARE_ACCESS_HOST", "\"\"")
+            buildConfigField("String", "FIREBASE_PROJECT_ID", "\"$developmentFirebaseProject\"")
+            buildConfigField("String", "ENVIRONMENT_BADGE", "\"DEV\"")
             buildConfigField("boolean", "WEBVIEW_DEBUGGABLE", "true")
             buildConfigField("boolean", "ENABLE_STARTUP_OVERLAY", "true")
+            manifestPlaceholders["appLinkHost"] = developmentInternalHost
+            signingConfig = signingConfigs.getByName("development")
             buildConfigField(
                 "String",
                 "DEVELOPMENT_DEBUG_CLIENT_HEADER",
@@ -60,10 +94,15 @@ android {
             dimension = "environment"
             resValue("string", "app_name", "むにったー")
             buildConfigField("String", "ENVIRONMENT", "\"production\"")
-            buildConfigField("String", "BASE_URL", "\"https://munitter.com/\"")
-            buildConfigField("String", "INTERNAL_HOST", "\"munitter.com\"")
+            buildConfigField("String", "BASE_URL", "\"$productionBaseUrl\"")
+            buildConfigField("String", "INTERNAL_HOST", "\"$productionInternalHost\"")
+            buildConfigField("String", "CLOUDFLARE_ACCESS_HOST", "\"$productionCloudflareAccessHost\"")
+            buildConfigField("String", "FIREBASE_PROJECT_ID", "\"$productionFirebaseProject\"")
+            buildConfigField("String", "ENVIRONMENT_BADGE", "\"\"")
             buildConfigField("boolean", "WEBVIEW_DEBUGGABLE", "false")
             buildConfigField("boolean", "ENABLE_STARTUP_OVERLAY", "false")
+            manifestPlaceholders["appLinkHost"] = productionInternalHost
+            signingConfig = signingConfigs.getByName("production")
         }
     }
 
@@ -72,6 +111,7 @@ android {
             isMinifyEnabled = false
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            signingConfig = signingConfigs.getByName("development")
         }
         release {
             isMinifyEnabled = true
@@ -106,6 +146,151 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }
+}
+
+androidComponents {
+    // Private and public Production builds share one signed Release identity.
+    // A debug-signed Production package would be a second, unsafe signing
+    // identity for the same environment, so that variant does not exist.
+    beforeVariants(
+        selector()
+            .withFlavor("environment" to "production")
+            .withBuildType("debug"),
+    ) { variant ->
+        variant.enable = false
+    }
+}
+
+val verifyEnvironmentIsolation by tasks.registering {
+    group = "verification"
+    description = "Fails when an Android environment can consume another environment's identity or Firebase configuration."
+
+    doLast {
+        data class ExpectedFirebaseConfig(
+            val path: String,
+            val packageName: String,
+            val projectId: String,
+        )
+
+        val expected = listOf(
+            ExpectedFirebaseConfig(
+                "src/developmentDebug/google-services.json",
+                "$developmentApplicationId.debug",
+                developmentFirebaseProject,
+            ),
+            ExpectedFirebaseConfig(
+                "src/developmentRelease/google-services.json",
+                developmentApplicationId,
+                developmentFirebaseProject,
+            ),
+            ExpectedFirebaseConfig(
+                "src/productionRelease/google-services.json",
+                productionApplicationId,
+                productionFirebaseProject,
+            ),
+        )
+
+        val forbiddenFallbacks = listOf(
+            file("src/main/google-services.json"),
+            file("src/development/google-services.json"),
+            file("src/production/google-services.json"),
+            file("src/productionDebug/google-services.json"),
+        )
+        check(forbiddenFallbacks.none { it.exists() }) {
+            "Environment-wide Firebase fallback configuration is forbidden; use an exact variant file."
+        }
+
+        expected.forEach { contract ->
+            val configFile = file(contract.path)
+            check(configFile.isFile) { "Missing exact Firebase configuration: ${contract.path}" }
+            @Suppress("UNCHECKED_CAST")
+            val root = JsonSlurper().parse(configFile) as Map<String, Any?>
+            @Suppress("UNCHECKED_CAST")
+            val projectInfo = root["project_info"] as? Map<String, Any?>
+            check(projectInfo?.get("project_id") == contract.projectId) {
+                "Firebase project mismatch for ${contract.path}"
+            }
+            @Suppress("UNCHECKED_CAST")
+            val clients = root["client"] as? List<Map<String, Any?>> ?: emptyList()
+            val packages = clients.mapNotNull { client ->
+                @Suppress("UNCHECKED_CAST")
+                val clientInfo = client["client_info"] as? Map<String, Any?>
+                @Suppress("UNCHECKED_CAST")
+                val androidInfo = clientInfo?.get("android_client_info") as? Map<String, Any?>
+                androidInfo?.get("package_name") as? String
+            }.toSet()
+            check(contract.packageName in packages) {
+                "Firebase package mismatch for ${contract.path}"
+            }
+            check(packages.none { packageName ->
+                contract.projectId == developmentFirebaseProject &&
+                    packageName == "com.munitter.android"
+            }) { "Production package found in Development Firebase configuration" }
+            check(packages.none { packageName ->
+                contract.projectId == productionFirebaseProject &&
+                    packageName.startsWith("com.munitter.android.development")
+            }) { "Development package found in Production Firebase configuration" }
+        }
+
+        check(developmentFirebaseProject != productionFirebaseProject) {
+            "Development and Production Firebase projects must remain distinct."
+        }
+        check(developmentApplicationId == "com.munitter.android.development")
+        check(productionApplicationId == "com.munitter.android")
+        check(developmentBaseUrl == "https://dev.munitter.com/")
+        check(productionBaseUrl == "https://munitter.com/")
+        check(developmentInternalHost == "dev.munitter.com")
+        check(productionInternalHost == "munitter.com")
+        check(productionCloudflareAccessHost == "munitter.cloudflareaccess.com")
+        check(developmentApplicationId != productionApplicationId)
+        check(developmentBaseUrl != productionBaseUrl)
+        check(developmentInternalHost != productionInternalHost)
+    }
+}
+
+val verifyDevelopmentSigning by tasks.registering {
+    group = "verification"
+    description = "Requires the dedicated Development signing identity."
+    doLast {
+        check(developmentSigning.values.all(String::isNotBlank)) {
+            "Development signing material must be supplied by the protected build wrapper."
+        }
+        check(file(developmentSigning.getValue("storeFile")).isFile) {
+            "Development signing keystore is unavailable."
+        }
+        check(developmentSigning.getValue("storeFile") != productionSigning["storeFile"]) {
+            "Development and Production may not share a keystore."
+        }
+    }
+}
+
+val verifyProductionSigning by tasks.registering {
+    group = "verification"
+    description = "Requires the dedicated Production upload signing identity."
+    doLast {
+        check(productionSigning.values.all(String::isNotBlank)) {
+            "Production signing material must be supplied by the protected build wrapper."
+        }
+        check(file(productionSigning.getValue("storeFile")).isFile) {
+            "Production signing keystore is unavailable."
+        }
+        check(productionSigning.getValue("storeFile") != developmentSigning["storeFile"]) {
+            "Production and Development may not share a keystore."
+        }
+    }
+}
+
+tasks.configureEach {
+    when {
+        name.matches(Regex("(?i).*(assemble|bundle|package|install)Development(Debug|Release).*")) ->
+            dependsOn(verifyDevelopmentSigning)
+        name.matches(Regex("(?i).*(assemble|bundle|package|install)ProductionRelease.*")) ->
+            dependsOn(verifyProductionSigning)
+    }
+}
+
+tasks.named("preBuild") {
+    dependsOn(verifyEnvironmentIsolation)
 }
 
 kotlin {

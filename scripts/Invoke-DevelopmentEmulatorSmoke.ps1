@@ -20,7 +20,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Path $PSScriptRoot -Parent
-$appId = "com.munitter.android.provisional.development.debug"
+$appId = "com.munitter.android.development.debug"
 $activity = "com.munitter.android.MainActivity"
 $apk = Join-Path $repoRoot "app\build\outputs\apk\development\debug\app-development-debug.apk"
 $developmentBaseUrl = "https://dev.munitter.com"
@@ -105,7 +105,9 @@ if ($bootComplete -ne '1') { throw "Android did not finish booting before timeou
 
 Push-Location $repoRoot
 try {
-    & (Join-Path $repoRoot 'gradlew.bat') ':app:assembleDevelopmentDebug' '--no-daemon'
+    & (Join-Path $repoRoot 'tools\Invoke-MunitterAndroidSigning.ps1') -Mode Gradle -GradleArguments @(
+        ':app:assembleDevelopmentDebug', '--no-daemon', '--console=plain'
+    )
     if ($LASTEXITCODE -ne 0) { throw "Development Debug build failed with exit code $LASTEXITCODE." }
 } finally {
     Pop-Location

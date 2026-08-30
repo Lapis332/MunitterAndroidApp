@@ -11,6 +11,7 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +29,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -41,6 +43,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.viewinterop.AndroidView
 import com.munitter.android.R
 import com.munitter.android.web.WebUiState
@@ -52,6 +57,7 @@ const val LOADING_PANEL_TEST_TAG = "web_loading_panel"
 const val NAVIGATION_HEADER_SNAPSHOT_TEST_TAG = "navigation_header_snapshot"
 const val STARTUP_OVERLAY_TEST_TAG = "startup_overlay"
 const val STARTUP_ICON_TEST_TAG = "startup_icon"
+const val ENVIRONMENT_BADGE_TEST_TAG = "environment_badge"
 
 @OptIn(ExperimentalActivityApi::class)
 @Composable
@@ -60,6 +66,7 @@ fun MunitterScreen(
     state: WebUiState,
     navigationHeaderSnapshot: Bitmap? = null,
     startupOverlayVisible: Boolean = false,
+    environmentBadge: String? = null,
     webViewDrawsBehindSystemBars: Boolean = false,
     onRetry: () -> Unit,
     onBack: () -> Unit,
@@ -163,6 +170,27 @@ fun MunitterScreen(
             exit = fadeOut(animationSpec = tween(durationMillis = STARTUP_FADE_DURATION_MS)),
         ) {
             StartupOverlay()
+        }
+
+        if (!environmentBadge.isNullOrBlank()) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .padding(top = 6.dp, end = 8.dp)
+                    .testTag(ENVIRONMENT_BADGE_TEST_TAG),
+                color = Color(0xE6201B2A),
+                shape = RoundedCornerShape(6.dp),
+                border = BorderStroke(1.dp, Color(0xFFFF4FA3)),
+            ) {
+                Text(
+                    text = environmentBadge,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
         }
     }
 }

@@ -5,6 +5,7 @@ import java.util.Locale
 
 enum class NavigationTarget {
     INTERNAL,
+    ACCESS_IN_WEBVIEW,
     OAUTH_IN_WEBVIEW,
     EXTERNAL_BROWSER,
     SPECIAL_INTENT,
@@ -18,8 +19,10 @@ data class NavigationDecision(
 
 class NavigationPolicy(
     internalHost: String,
+    cloudflareAccessHost: String = "",
 ) {
     private val internalHost = internalHost.lowercase(Locale.US)
+    private val cloudflareAccessHost = cloudflareAccessHost.lowercase(Locale.US)
     private val oauthHosts = setOf("twitter.com", "www.twitter.com", "x.com", "www.x.com")
 
     fun classify(rawUrl: String?, oauthInProgress: Boolean): NavigationDecision {
@@ -49,6 +52,14 @@ class NavigationPolicy(
             return NavigationDecision(NavigationTarget.INTERNAL, uri)
         }
 
+        if (
+            cloudflareAccessHost.isNotEmpty() &&
+            host == cloudflareAccessHost &&
+            isCloudflareAccessPath(uri.path)
+        ) {
+            return NavigationDecision(NavigationTarget.ACCESS_IN_WEBVIEW, uri)
+        }
+
         if (host in oauthHosts && (oauthInProgress || isOAuthAuthorizePath(uri.path))) {
             return NavigationDecision(NavigationTarget.OAUTH_IN_WEBVIEW, uri)
         }
@@ -66,6 +77,12 @@ class NavigationPolicy(
     private fun isOAuthAuthorizePath(path: String?): Boolean {
         val normalized = path.orEmpty().trimEnd('/').lowercase(Locale.US)
         return normalized == "/i/oauth2/authorize"
+    }
+
+    private fun isCloudflareAccessPath(path: String?): Boolean {
+        val normalized = path.orEmpty().trimEnd('/').lowercase(Locale.US)
+        return normalized == "/cdn-cgi/access" ||
+            normalized.startsWith("/cdn-cgi/access/")
     }
 }
 

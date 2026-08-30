@@ -1,4 +1,6 @@
-# 初期版検証報告
+# 初期版検証報告（履歴）
+
+この文書は初期検証時の履歴であり、現在の正式identityは[Development / Production共存運用](ENVIRONMENT_MATRIX.md)を正本とする。
 
 実施日: 2026-07-28（JST）
 

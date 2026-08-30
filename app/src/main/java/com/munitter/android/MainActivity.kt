@@ -131,7 +131,10 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             window.isNavigationBarContrastEnforced = false
         }
 
-        navigationPolicy = NavigationPolicy(BuildConfig.INTERNAL_HOST)
+        navigationPolicy = NavigationPolicy(
+            internalHost = BuildConfig.INTERNAL_HOST,
+            cloudflareAccessHost = BuildConfig.CLOUDFLARE_ACCESS_HOST,
+        )
         oauthState = OAuthNavigationState(
             initialValue = savedInstanceState?.getBoolean(STATE_OAUTH_IN_PROGRESS) == true,
         )
@@ -161,6 +164,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
                     state = uiState,
                     navigationHeaderSnapshot = navigationHeaderSnapshot,
                     startupOverlayVisible = startupOverlayVisible,
+                    environmentBadge = BuildConfig.ENVIRONMENT_BADGE.ifBlank { null },
                     webViewDrawsBehindSystemBars = developmentEdgeToEdgeEnabled,
                     onRetry = ::retry,
                     onBack = ::handleBack,

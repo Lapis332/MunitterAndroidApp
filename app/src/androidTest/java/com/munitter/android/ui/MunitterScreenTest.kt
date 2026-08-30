@@ -2,6 +2,7 @@ package com.munitter.android.ui
 
 import android.graphics.Bitmap
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.hasClickAction
@@ -20,6 +21,26 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class MunitterScreenTest {
+    @Test
+    fun developmentEnvironmentBadgeIsVisibleWhenConfigured() {
+        composeRule.setContent {
+            MunitterTheme {
+                MunitterScreen(
+                    webView = null,
+                    state = WebUiState(isLoading = true),
+                    environmentBadge = "DEV",
+                    onRetry = {},
+                    onBack = {},
+                )
+            }
+        }
+
+        composeRule
+            .onNodeWithTag(ENVIRONMENT_BADGE_TEST_TAG)
+            .assertIsDisplayed()
+            .assertTextEquals("DEV")
+    }
+
     @get:Rule
     val composeRule = createComposeRule()
 

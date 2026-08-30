@@ -8,6 +8,10 @@ import org.junit.Test
 
 class NavigationPolicyTest {
     private val policy = NavigationPolicy(INTERNAL_HOST)
+    private val privateProductionPolicy = NavigationPolicy(
+        internalHost = "munitter.com",
+        cloudflareAccessHost = "munitter.cloudflareaccess.com",
+    )
 
     @Test
     fun `blank and malformed URLs are blocked without a parsed URI`() {
@@ -49,6 +53,48 @@ class NavigationPolicyTest {
                 policy.classify(rawUrl, oauthInProgress = false).target,
             )
         }
+    }
+
+    @Test
+    fun `private Production allows only the exact Cloudflare Access authentication path`() {
+        listOf(
+            "https://munitter.cloudflareaccess.com/cdn-cgi/access/login/munitter.com",
+            "https://munitter.cloudflareaccess.com/cdn-cgi/access/callback",
+            "https://munitter.cloudflareaccess.com/cdn-cgi/access/",
+        ).forEach { rawUrl ->
+            assertEquals(
+                "Expected Access navigation for $rawUrl",
+                NavigationTarget.ACCESS_IN_WEBVIEW,
+                privateProductionPolicy.classify(rawUrl, oauthInProgress = false).target,
+            )
+        }
+    }
+
+    @Test
+    fun `Cloudflare Access exception rejects unrelated paths lookalikes and insecure transport`() {
+        val decisions = mapOf(
+            "https://munitter.cloudflareaccess.com/" to NavigationTarget.EXTERNAL_BROWSER,
+            "https://munitter.cloudflareaccess.com/cdn-cgi/accessibility" to NavigationTarget.EXTERNAL_BROWSER,
+            "https://evil.cloudflareaccess.com/cdn-cgi/access/login" to NavigationTarget.EXTERNAL_BROWSER,
+            "https://munitter.cloudflareaccess.com.example.org/cdn-cgi/access/login" to NavigationTarget.EXTERNAL_BROWSER,
+            "http://munitter.cloudflareaccess.com/cdn-cgi/access/login" to NavigationTarget.BLOCKED,
+            "https://munitter.cloudflareaccess.com:8443/cdn-cgi/access/login" to NavigationTarget.BLOCKED,
+            "https://user@munitter.cloudflareaccess.com/cdn-cgi/access/login" to NavigationTarget.BLOCKED,
+        )
+        decisions.forEach { (rawUrl, expectedTarget) ->
+            assertEquals(
+                "Unexpected Access routing for $rawUrl",
+                expectedTarget,
+                privateProductionPolicy.classify(rawUrl, oauthInProgress = false).target,
+            )
+        }
+        assertEquals(
+            NavigationTarget.EXTERNAL_BROWSER,
+            policy.classify(
+                "https://munitter.cloudflareaccess.com/cdn-cgi/access/login/munitter.com",
+                oauthInProgress = false,
+            ).target,
+        )
     }
 
     @Test

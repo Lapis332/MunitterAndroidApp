@@ -4,7 +4,7 @@
 
 ## 判定と対象
 
-- 対象は `developmentDebug` (`com.munitter.android.provisional.development.debug`) のみ。
+- この記録時点の対象は旧 `developmentDebug` (`com.munitter.android.provisional.development.debug`)。正式共存移行後は `com.munitter.android.development.debug`を使用する。
 - Android Development は正式な Edge-to-Edge Window と、全面 WebView、Web 側 safe area の組み合わせへ変更した。
 - Production variantはビルド・実行しておらず、Production Web、Production DB、Production R2、Production Cloudflareには接続・変更していない。
 - 実機は Samsung Galaxy A57 (`SM-A576Q` / `a57xjpn`)、Android 16 / API 36、1080 x 2340、density 450。

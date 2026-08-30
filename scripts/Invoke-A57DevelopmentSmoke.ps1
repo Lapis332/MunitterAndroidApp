@@ -2,7 +2,7 @@
     Invoke-A57DevelopmentSmoke.ps1
     Purpose:
       Development Debug APK build + A57 cold launch + screenshot + log + anomaly check
-      for com.munitter.android.provisional.development.debug
+      for com.munitter.android.development.debug
 #>
 [CmdletBinding()]
 param(
@@ -29,7 +29,7 @@ $projectTag = "A57 Development Smoke"
 $artifactDir = Join-Path $repoRoot "artifacts\device-test"
 $remoteTempDir = "/sdcard"
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$expectedAppId = "com.munitter.android.provisional.development.debug"
+$expectedAppId = "com.munitter.android.development.debug"
 $expectedLauncherActivity = "com.munitter.android.MainActivity"
 $apkRelativePath = "app\build\outputs\apk\development\debug\app-development-debug.apk"
 $apkPath = Join-Path $repoRoot $apkRelativePath
@@ -272,7 +272,13 @@ try {
     if (-not $SkipBuild) {
         Write-Host ""
         Write-Host "===== Build: :app:assembleDevelopmentDebug ====="
-        $buildOutput = & "$repoRoot\gradlew.bat" ":app:assembleDevelopmentDebug" "--no-daemon" "--stacktrace" 2>&1
+        $signingWrapper = Join-Path $repoRoot "tools\Invoke-MunitterAndroidSigning.ps1"
+        if (-not (Test-Path -LiteralPath $signingWrapper -PathType Leaf)) {
+            Fail-Script -Step "Build" -ExitCode 4 -Reason "Protected signing wrapper is unavailable." -Evidence @($signingWrapper)
+        }
+        $buildOutput = & $signingWrapper -Mode Gradle -GradleArguments @(
+            ":app:assembleDevelopmentDebug", "--no-daemon", "--stacktrace", "--console=plain"
+        ) 2>&1
         $buildExit = $LASTEXITCODE
         if ($VerbosePreference -ne 'SilentlyContinue') {
             $buildOutput | ForEach-Object { Write-Host $_ }

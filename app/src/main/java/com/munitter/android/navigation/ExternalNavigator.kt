@@ -18,6 +18,7 @@ class ExternalNavigator(
             NavigationTarget.EXTERNAL_BROWSER -> openHttps(rawUrl)
             NavigationTarget.SPECIAL_INTENT -> openSpecial(rawUrl)
             NavigationTarget.INTERNAL,
+            NavigationTarget.ACCESS_IN_WEBVIEW,
             NavigationTarget.OAUTH_IN_WEBVIEW,
             -> loadInternalUrl(rawUrl)
             NavigationTarget.BLOCKED -> showBlocked()

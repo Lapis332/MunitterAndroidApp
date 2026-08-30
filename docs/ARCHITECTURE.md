@@ -9,7 +9,7 @@
 | 項目 | 値 |
 |---|---|
 | Production Application ID | `com.munitter.android` |
-| Development Application ID | 既存互換のため `com.munitter.android.provisional.development` 系を維持 |
+| Development Application ID | `com.munitter.android.development`（Debugは`.debug`） |
 | UI | Kotlin / Jetpack Compose / Material 3 |
 | Web | Android WebView / AndroidX WebKit |
 | minSdk | 24 |
@@ -74,7 +74,7 @@ Service Worker は Web の scope `/` を尊重するが、現状 fetch cache / p
 
 Development / Production の接続先、表示名、デバッグ可否はビルド時に分離する。URL を画面コードへ散在させず、接続先と許可 origin の定義へ集約する。署名鍵、パスワード、`local.properties` はリポジトリに含めない。
 
-Production正式Application IDと環境分離FCMはPhase 3Bで導入した。release signing、Play App Signing、App Linksは引き続き公開前の別gateとし、Production releaseへDevelopmentのpackage、Firebase設定、署名を流用しない。
+Production正式Application IDとDevelopment正式Application ID、environment別FCM、固定endpoint、別署名、App Linksを共存契約とする。`verifyEnvironmentIsolation`と署名wrapperをbuild gateにし、Production releaseへDevelopmentのpackage、Firebase設定、署名を流用しない。Production Debug variantは生成しない。
 
 ## 現在の判定
 
