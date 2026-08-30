@@ -20,9 +20,11 @@ data class NavigationDecision(
 class NavigationPolicy(
     internalHost: String,
     cloudflareAccessHost: String = "",
+    cloudflareAccessCallbackHost: String = "",
 ) {
     private val internalHost = internalHost.lowercase(Locale.US)
     private val cloudflareAccessHost = cloudflareAccessHost.lowercase(Locale.US)
+    private val cloudflareAccessCallbackHost = cloudflareAccessCallbackHost.lowercase(Locale.US)
     private val oauthHosts = setOf("twitter.com", "www.twitter.com", "x.com", "www.x.com")
 
     fun classify(rawUrl: String?, oauthInProgress: Boolean): NavigationDecision {
@@ -60,6 +62,14 @@ class NavigationPolicy(
             return NavigationDecision(NavigationTarget.ACCESS_IN_WEBVIEW, uri)
         }
 
+        if (
+            cloudflareAccessCallbackHost.isNotEmpty() &&
+            host == cloudflareAccessCallbackHost &&
+            isCloudflareAccessAuthorizedPath(uri.path)
+        ) {
+            return NavigationDecision(NavigationTarget.ACCESS_IN_WEBVIEW, uri)
+        }
+
         if (host in oauthHosts && (oauthInProgress || isOAuthAuthorizePath(uri.path))) {
             return NavigationDecision(NavigationTarget.OAUTH_IN_WEBVIEW, uri)
         }
@@ -84,6 +94,12 @@ class NavigationPolicy(
         return normalized == "/cdn-cgi/access" ||
             normalized.startsWith("/cdn-cgi/access/")
     }
+
+    private fun isCloudflareAccessAuthorizedPath(path: String?): Boolean =
+        path.orEmpty().trimEnd('/').equals(
+            "/cdn-cgi/access/authorized",
+            ignoreCase = true,
+        )
 }
 
 class OAuthNavigationState(

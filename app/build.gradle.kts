@@ -17,6 +17,7 @@ val productionBaseUrl = "https://munitter.com/"
 val developmentInternalHost = "dev.munitter.com"
 val productionInternalHost = "munitter.com"
 val productionCloudflareAccessHost = "munitter.cloudflareaccess.com"
+val productionCloudflareAccessCallbackHost = "www.munitter.com"
 
 fun signingEnvironment(prefix: String): Map<String, String> = mapOf(
     "storeFile" to providers.environmentVariable("MUNITTER_ANDROID_${prefix}_KEYSTORE").orNull.orEmpty(),
@@ -78,6 +79,7 @@ android {
             buildConfigField("String", "BASE_URL", "\"$developmentBaseUrl\"")
             buildConfigField("String", "INTERNAL_HOST", "\"$developmentInternalHost\"")
             buildConfigField("String", "CLOUDFLARE_ACCESS_HOST", "\"\"")
+            buildConfigField("String", "CLOUDFLARE_ACCESS_CALLBACK_HOST", "\"\"")
             buildConfigField("String", "FIREBASE_PROJECT_ID", "\"$developmentFirebaseProject\"")
             buildConfigField("String", "ENVIRONMENT_BADGE", "\"DEV\"")
             buildConfigField("boolean", "WEBVIEW_DEBUGGABLE", "true")
@@ -97,6 +99,11 @@ android {
             buildConfigField("String", "BASE_URL", "\"$productionBaseUrl\"")
             buildConfigField("String", "INTERNAL_HOST", "\"$productionInternalHost\"")
             buildConfigField("String", "CLOUDFLARE_ACCESS_HOST", "\"$productionCloudflareAccessHost\"")
+            buildConfigField(
+                "String",
+                "CLOUDFLARE_ACCESS_CALLBACK_HOST",
+                "\"$productionCloudflareAccessCallbackHost\"",
+            )
             buildConfigField("String", "FIREBASE_PROJECT_ID", "\"$productionFirebaseProject\"")
             buildConfigField("String", "ENVIRONMENT_BADGE", "\"\"")
             buildConfigField("boolean", "WEBVIEW_DEBUGGABLE", "false")
@@ -242,6 +249,7 @@ val verifyEnvironmentIsolation by tasks.registering {
         check(developmentInternalHost == "dev.munitter.com")
         check(productionInternalHost == "munitter.com")
         check(productionCloudflareAccessHost == "munitter.cloudflareaccess.com")
+        check(productionCloudflareAccessCallbackHost == "www.munitter.com")
         check(developmentApplicationId != productionApplicationId)
         check(developmentBaseUrl != productionBaseUrl)
         check(developmentInternalHost != productionInternalHost)

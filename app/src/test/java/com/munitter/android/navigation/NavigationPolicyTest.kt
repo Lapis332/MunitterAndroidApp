@@ -11,6 +11,7 @@ class NavigationPolicyTest {
     private val privateProductionPolicy = NavigationPolicy(
         internalHost = "munitter.com",
         cloudflareAccessHost = "munitter.cloudflareaccess.com",
+        cloudflareAccessCallbackHost = "www.munitter.com",
     )
 
     @Test
@@ -92,6 +93,46 @@ class NavigationPolicyTest {
             NavigationTarget.EXTERNAL_BROWSER,
             policy.classify(
                 "https://munitter.cloudflareaccess.com/cdn-cgi/access/login/munitter.com",
+                oauthInProgress = false,
+            ).target,
+        )
+    }
+
+    @Test
+    fun `private Production allows only the exact Access authorized callback on canonical www`() {
+        listOf(
+            "https://www.munitter.com/cdn-cgi/access/authorized",
+            "https://www.munitter.com/cdn-cgi/access/authorized/",
+            "https://www.munitter.com/cdn-cgi/access/authorized?state=opaque",
+        ).forEach { rawUrl ->
+            assertEquals(
+                "Expected Access callback navigation for $rawUrl",
+                NavigationTarget.ACCESS_IN_WEBVIEW,
+                privateProductionPolicy.classify(rawUrl, oauthInProgress = false).target,
+            )
+        }
+
+        val rejected = mapOf(
+            "https://www.munitter.com/" to NavigationTarget.EXTERNAL_BROWSER,
+            "https://www.munitter.com/cdn-cgi/access" to NavigationTarget.EXTERNAL_BROWSER,
+            "https://www.munitter.com/cdn-cgi/access/authorized-extra" to NavigationTarget.EXTERNAL_BROWSER,
+            "https://www.munitter.com.example.org/cdn-cgi/access/authorized" to NavigationTarget.EXTERNAL_BROWSER,
+            "http://www.munitter.com/cdn-cgi/access/authorized" to NavigationTarget.BLOCKED,
+            "https://www.munitter.com:8443/cdn-cgi/access/authorized" to NavigationTarget.BLOCKED,
+            "https://user@www.munitter.com/cdn-cgi/access/authorized" to NavigationTarget.BLOCKED,
+        )
+        rejected.forEach { (rawUrl, expectedTarget) ->
+            assertEquals(
+                "Unexpected Access callback routing for $rawUrl",
+                expectedTarget,
+                privateProductionPolicy.classify(rawUrl, oauthInProgress = false).target,
+            )
+        }
+
+        assertEquals(
+            NavigationTarget.EXTERNAL_BROWSER,
+            policy.classify(
+                "https://www.munitter.com/cdn-cgi/access/authorized",
                 oauthInProgress = false,
             ).target,
         )

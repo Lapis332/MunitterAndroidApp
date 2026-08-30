@@ -21,6 +21,7 @@ class EnvironmentContractTest {
                 assertEquals("dev.munitter.com", BuildConfig.INTERNAL_HOST)
                 assertEquals("munitter-dev-fcm-2026-db973d", BuildConfig.FIREBASE_PROJECT_ID)
                 assertEquals("", BuildConfig.CLOUDFLARE_ACCESS_HOST)
+                assertEquals("", BuildConfig.CLOUDFLARE_ACCESS_CALLBACK_HOST)
                 assertEquals("DEV", BuildConfig.ENVIRONMENT_BADGE)
                 assertTrue(BuildConfig.WEBVIEW_DEBUGGABLE)
                 assertTrue(
@@ -33,6 +34,7 @@ class EnvironmentContractTest {
                 assertEquals("munitter.com", BuildConfig.INTERNAL_HOST)
                 assertEquals("munitter-prod-fcm-2026-df60ow", BuildConfig.FIREBASE_PROJECT_ID)
                 assertEquals("munitter.cloudflareaccess.com", BuildConfig.CLOUDFLARE_ACCESS_HOST)
+                assertEquals("www.munitter.com", BuildConfig.CLOUDFLARE_ACCESS_CALLBACK_HOST)
                 assertEquals("", BuildConfig.ENVIRONMENT_BADGE)
                 assertFalse(BuildConfig.WEBVIEW_DEBUGGABLE)
                 assertFalse(BuildConfig.APPLICATION_ID.contains(".development"))

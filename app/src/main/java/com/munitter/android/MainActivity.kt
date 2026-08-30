@@ -138,6 +138,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         navigationPolicy = NavigationPolicy(
             internalHost = BuildConfig.INTERNAL_HOST,
             cloudflareAccessHost = BuildConfig.CLOUDFLARE_ACCESS_HOST,
+            cloudflareAccessCallbackHost = BuildConfig.CLOUDFLARE_ACCESS_CALLBACK_HOST,
         )
         oauthState = OAuthNavigationState(
             initialValue = savedInstanceState?.getBoolean(STATE_OAUTH_IN_PROGRESS) == true,
