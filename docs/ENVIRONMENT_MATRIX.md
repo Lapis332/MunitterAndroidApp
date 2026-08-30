@@ -45,7 +45,7 @@ Production keystoreはPlay App Signingのapp signing keyではなくupload key�
 
 - Developmentは`dev.munitter.com`だけを内部originおよびApp Link hostとして扱う。
 - Productionは`munitter.com`だけを内部originおよびApp Link hostとして扱う。
-- Private Productionの認証遷移に限り、Production artifactだけが`munitter.cloudflareaccess.com/cdn-cgi/access/*`をWebView内で許可する。Development artifactではこの例外を持たない。
+- Private Productionの認証遷移に限り、Production artifactだけが`munitter.cloudflareaccess.com/cdn-cgi/access/*`と、Cloudflareが返すexact callback `www.munitter.com/cdn-cgi/access/authorized`をWebView内で許可する。通常の`www` route、lookalike path、Development artifactにはこの例外を持たない。
 - Cloudflare AccessのService Tokenや共有credentialをappへ埋め込まず、One-time PIN等の人間向け認証で`CF_Authorization` cookieをProduction app固有WebViewへ発行する。
 - build後にhostを選ぶUI、remote flag、Development/Production fallbackは設けない。
 - OAuth中の外部X hostは認証遷移だけに限定し、callback後はartifact固有のWeb originへ戻す。
