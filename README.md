@@ -3,7 +3,7 @@
 既存のむにったーWeb版を唯一のUI・機能本体として表示する、Kotlin + Jetpack Compose + WebViewの薄いAndroidシェルです。投稿一覧やプロフィール等をAndroid側へ二重実装していません。
 
 > [!IMPORTANT]
-> Application ID `com.munitter.android.provisional` は仮IDです。Play Console、App Links、FCM、正式なリリース署名を設定する前に、公開済みアプリと衝突しない正式IDを確定してください。一度Play Storeで公開したApplication IDは変更できません。
+> Production正式Application IDは `com.munitter.android` です。既存DevelopmentのインストールとFirebase登録を壊さないため、Developmentだけは従来の `com.munitter.android.provisional.development` 系を維持します。Production release署名は別途確定が必要です。
 
 ## 構成
 
@@ -24,8 +24,8 @@ AGP 9.x / API 37 previewへ追随するより、インストール済みの安�
 |---|---|---:|---|
 | `developmentDebug` | `https://dev.munitter.com/` | 有効 | `com.munitter.android.provisional.development.debug` |
 | `developmentRelease` | `https://dev.munitter.com/` | 有効 | `com.munitter.android.provisional.development` |
-| `productionDebug` | `https://munitter.com/` | 無効 | `com.munitter.android.provisional.debug` |
-| `productionRelease` | `https://munitter.com/` | 無効 | `com.munitter.android.provisional` |
+| `productionDebug` | `https://munitter.com/` | 無効 | `com.munitter.android.debug` |
+| `productionRelease` | `https://munitter.com/` | 無効 | `com.munitter.android` |
 
 URL、内部ホスト、環境名、デバッグ可否は[app/build.gradle.kts](app/build.gradle.kts)のProduct Flavorへ集約しています。実行時設定やユーザー入力でproduction接続先を切り替える構造にはしていません。
 
@@ -133,8 +133,8 @@ Web版変更時は、認証/Cookie、外部ホスト、ファイルinput、マ�
 
 ## 現時点の制約
 
-- App Linksは、正式Application ID・release署名SHA-256・`/.well-known/assetlinks.json`が未確定のため未実装です。
-- Android OS通知は、既存の認証済みWeb通知APIを再利用するforeground同期（60秒）と、ネットワーク接続時のWorkManager同期（最短15分）で実装しています。FCMはサーバー側の端末トークン関連付け、ログアウト解除、Web通知との重複防止が未設計のため未実装です。
+- App Linksは、release署名SHA-256と`/.well-known/assetlinks.json`が未確定のため未実装です。正式Application IDは確定済みです。
+- Android OS通知は、既存の認証済みWeb通知APIを再利用するforeground同期（60秒）と、ネットワーク接続時のWorkManager同期（最短15分）で実装しています。FCMも環境別Firebase設定、認証付きtoken登録、ログアウト・アカウント切替時の無効化、通知表示を実装していますが、Production実配信はPrivate Production Validationまで無効です。
 - Android 13以降の通知権限は、認証済み画面が表示された自然なタイミングで一度だけ要求します。通知Channelは `munitter_notifications`、badge許可はChannel作成時に有効化します。
 - 実アカウントを使うメール/Xログイン、投稿、DM、Spacesマイク、バックグラウンド復帰、回転、低速通信は実機チェックリストで確認してください。
 - WebViewの `MediaRecorder` がSpacesのAAC/MP4を提供できるかは端末とSystem WebViewの版に依存します。

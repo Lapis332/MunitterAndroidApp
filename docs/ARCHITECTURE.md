@@ -8,8 +8,8 @@
 
 | 項目 | 値 |
 |---|---|
-| Application ID | `com.munitter.android.provisional` |
-| ID の扱い | **仮 ID**。Play Store 公開前に正式 ID を確定する |
+| Production Application ID | `com.munitter.android` |
+| Development Application ID | 既存互換のため `com.munitter.android.provisional.development` 系を維持 |
 | UI | Kotlin / Jetpack Compose / Material 3 |
 | Web | Android WebView / AndroidX WebKit |
 | minSdk | 24 |
@@ -74,14 +74,14 @@ Service Worker は Web の scope `/` を尊重するが、現状 fetch cache / p
 
 Development / Production の接続先、表示名、デバッグ可否はビルド時に分離する。URL を画面コードへ散在させず、接続先と許可 origin の定義へ集約する。署名鍵、パスワード、`local.properties` はリポジトリに含めない。
 
-正式 Application ID、release signing、FCM、App Links は初期版の外側とする。特に Application ID は Play Store 登録後に変更できないため、`com.munitter.android.provisional` のまま公開しない。
+Production正式Application IDと環境分離FCMはPhase 3Bで導入した。release signing、Play App Signing、App Linksは引き続き公開前の別gateとし、Production releaseへDevelopmentのpackage、Firebase設定、署名を流用しない。
 
 ## 現在の判定
 
 ### 確認済み
 
 - 独立した Compose / WebView シェルという責務境界。
-- Development / Production URL、仮 Application ID、SDK 水準。
+- Development / Production URL、環境別 Application ID、SDK 水準。
 - トップレベル遷移と HTTPS サブリソースを分ける方針。
 - X OAuth、ファイル chooser、信頼 origin のマイク権限に必要な境界。
 - 通知権限、`munitter_notifications` Channelのbadge許可、既読APIの状態に合わせたOS通知解除、通知タップのsingleTask内部URL遷移。
@@ -90,5 +90,5 @@ Development / Production の接続先、表示名、デバッグ可否はビル�
 
 - Android A57 での表示、認証、メディア、SignalR、ジェスチャー、プロセス再生成。
 - 将来のWeb更新後も監査時の認証・URL・メディア契約が維持されること。
-- 正式 Application ID、Play signing 証明書、App Links の path 範囲。
+- Play signing 証明書、App Links の path 範囲。
 - Production release signing と Play Store 配布。

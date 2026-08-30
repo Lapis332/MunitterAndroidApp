@@ -2,15 +2,15 @@
 
 ## 現在地
 
-Web UI をそのまま表示する独立した Compose / WebView シェルを維持しつつ、Android OS通知は既存Web通知APIの認証Cookie同期で導入した。FCM、App Links、Play Store release signing は未導入であり、実機成功は端末接続後に確認する。
+Web UI をそのまま表示する独立した Compose / WebView シェルを維持しつつ、Android OS通知は既存Web通知APIの認証Cookie同期と環境分離FCMで実装した。App LinksとPlay Store release signingは未導入であり、FCM実配信は正式Production test identity作成後に確認する。
 
 確認済みの前提:
 
-- Application ID `com.munitter.android.provisional` は仮 ID。
+- Production Application IDは `com.munitter.android` に確定。既存Development IDは互換性のため維持。
 - Web Service Worker は scope `/` で、監査時点では fetch cache / push を持たない。
 - Android通知はforeground 60秒同期とWorkManager 15分周期同期で、通知Channelの標準badgeとWeb既読状態を再利用する。
 - X OAuth は Web セッションと PKCE に依存するため同じ WebView 内で完結させる。
-- App Links に必要な正式 package、最終署名証明書、サーバーの `assetlinks.json` は確定していない。
+- App Links に必要な最終署名証明書とサーバーの `assetlinks.json` は確定していない。
 
 ## Phase 1: 初期版の実機受け入れ
 
@@ -24,8 +24,8 @@ Web UI をそのまま表示する独立した Compose / WebView シェルを維
 
 ## Phase 2: 公開アイデンティティと署名
 
-1. Play Store で使う正式 Application ID を所有者が決定する。
-2. 仮 ID から正式 ID へ、初回公開前に一度だけ計画的に移行する。
+1. ~~Play Storeで使う正式Application IDを所有者が決定する。~~ `com.munitter.android` に確定済み。
+2. ~~仮IDから正式IDへ、初回公開前に一度だけ計画的に移行する。~~ Production flavorへ反映済み。Development IDは破壊せず維持。
 3. Play App Signing、upload key、鍵の保管・復旧・担当者を決める。
 4. release 設定、プライバシーポリシー、Data safety、権限説明、ストア素材、内部テスト track を準備する。
 5. Production の署名済み AAB / APK と versionCode 運用を CI に追加する。
@@ -34,7 +34,7 @@ Web UI をそのまま表示する独立した Compose / WebView シェルを維
 
 ## Phase 3: App Links
 
-正式 Application ID と最終署名証明書の SHA-256 fingerprint が確定してから着手する。
+正式 Application ID は確定済み。最終署名証明書の SHA-256 fingerprint が確定してから着手する。
 
 1. 投稿、プロフィール、DM などの **既存 canonical HTTPS URL** を Web 側で棚卸しする。
 2. 認証不要 URL と認証必要 URL、存在しない URL、アプリ未導入時の Web fallback を定義する。
@@ -43,11 +43,11 @@ Web UI をそのまま表示する独立した Compose / WebView シェルを維
 5. Android の path allowlist を必要最小限にし、未知 path は通常の Web 起動へ安全にフォールバックする。
 6. インストール済み / 未導入、ログイン済み / 未ログイン、期限切れセッションを実機で確認する。
 
-現段階で App Links を部分実装しない理由は、`assetlinks.json`、正式 Application ID、最終署名がなく、検証済みリンクを保証できないためである。
+現段階で App Links を部分実装しない理由は、`assetlinks.json`と最終署名がなく、検証済みリンクを保証できないためである。
 
-## Phase 4: FCM
+## Phase 4: FCM（構成済み、実配信保留）
 
-サーバー API、DB、運用設計を合意してから追加する。
+サーバーAPI、DB、環境境界、Android clientはPhase 3Bで追加済み。Production一般配信は無効のまま、Private Production Validationでtest tokenを作成して実配信を確認する。
 
 1. ユーザー、端末、アプリ環境、FCM token の関連モデルを定義する。
 2. token 登録、更新、失効、ログアウト時解除、アカウント切替を認証付き API にする。
@@ -83,14 +83,13 @@ Web UI をそのまま表示する独立した Compose / WebView シェルを維
 - User-Agent による大規模な Android 専用 Web UI。
 - 必要性が実証されていない JavaScript bridge。
 - Web のアップロード制限、変換、SignalR、通知状態の Android 側二重実装。
-- 未確定の URL、正式 Application ID、署名 fingerprint の推測。
+- 未確定の URL、署名 fingerprint の推測。
 
 ## 未確認・意思決定待ち
 
-- 正式 Application ID と Play Store 所有者。
 - release signing / Play App Signing の運用。
 - App Links 対象 path と `assetlinks.json` 配信責任者。
-- FCM のサーバー API、DB、配信・同意・削除方針。
+- FCM実配信、利用者同意、削除運用のProduction test identityによる検証。
 - Web push 導入予定と二重通知ルール。
 - 将来のDevelopment更新時における稼働commitとWeb監査snapshotの継続的な対応付け。
 - Android A57 を含む実機受け入れ結果。

@@ -20,13 +20,17 @@ class EnvironmentContractTest {
                 assertEquals("https://dev.munitter.com/", BuildConfig.BASE_URL)
                 assertEquals("dev.munitter.com", BuildConfig.INTERNAL_HOST)
                 assertTrue(BuildConfig.WEBVIEW_DEBUGGABLE)
-                assertTrue(BuildConfig.APPLICATION_ID.contains(".development"))
+                assertTrue(BuildConfig.APPLICATION_ID.startsWith("com.munitter.android.provisional.development"))
             }
             "production" -> {
                 assertEquals("https://munitter.com/", BuildConfig.BASE_URL)
                 assertEquals("munitter.com", BuildConfig.INTERNAL_HOST)
                 assertFalse(BuildConfig.WEBVIEW_DEBUGGABLE)
                 assertFalse(BuildConfig.APPLICATION_ID.contains(".development"))
+                assertTrue(
+                    BuildConfig.APPLICATION_ID == "com.munitter.android" ||
+                        BuildConfig.APPLICATION_ID == "com.munitter.android.debug",
+                )
             }
             else -> error("Unexpected environment: ${BuildConfig.ENVIRONMENT}")
         }

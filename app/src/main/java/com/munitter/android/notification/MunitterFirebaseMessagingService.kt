@@ -16,7 +16,7 @@ class MunitterFirebaseMessagingService : FirebaseMessagingService() {
     private val avatarLoader by lazy { NotificationAvatarLoader(this) }
 
     override fun onNewToken(token: String) {
-        if (!isDevelopment()) return
+        if (!isSupportedEnvironment()) return
         val store = FcmTokenStore(this)
         store.save(token)
         Log.i(TAG, "FCM token updated tokenHash=${tokenHash(token)}")
@@ -24,7 +24,7 @@ class MunitterFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
-        if (!isDevelopment()) return
+        if (!isSupportedEnvironment()) return
         Log.i(TAG, "FCM message received dataKeys=${message.data.keys.sorted()}")
         val payload = FcmPayloadParser.parse(message.data)
         if (payload == null) {
@@ -96,8 +96,8 @@ class MunitterFirebaseMessagingService : FirebaseMessagingService() {
         super.onDestroy()
     }
 
-    private fun isDevelopment(): Boolean =
-        BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)
+    private fun isSupportedEnvironment(): Boolean =
+        FcmRuntimeEnvironment.isSupported(BuildConfig.ENVIRONMENT)
 
     private fun tokenHash(token: String): String = token.hashCode().toUInt().toString(16)
 

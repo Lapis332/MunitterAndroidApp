@@ -16,7 +16,7 @@ class FcmTokenRegistrar(context: Context) {
     private val store = FcmTokenStore(appContext)
 
     suspend fun registerIfPossible(): Boolean = withContext(Dispatchers.IO) {
-        if (!BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)) return@withContext false
+        val serverEnvironment = serverEnvironment() ?: return@withContext false
         val token = store.read() ?: return@withContext false
         val cookie = runCatching {
             CookieManager.getInstance().getCookie(BuildConfig.BASE_URL)
@@ -24,7 +24,7 @@ class FcmTokenRegistrar(context: Context) {
         if (cookie.isNullOrBlank()) return@withContext false
         var antiForgeryToken = store.antiForgeryToken() ?: fetchAntiForgeryToken(cookie)
             ?: return@withContext false
-        var status = postRegistration(token, cookie, antiForgeryToken)
+        var status = postRegistration(token, cookie, antiForgeryToken, serverEnvironment)
         if (status == HttpURLConnection.HTTP_BAD_REQUEST) {
             // The antiforgery token is session-bound. Refresh it once after a
             // server-side key/session rotation instead of retrying a stale value.
@@ -33,7 +33,7 @@ class FcmTokenRegistrar(context: Context) {
                 CookieManager.getInstance().getCookie(BuildConfig.BASE_URL)
             }.getOrNull() ?: cookie
             antiForgeryToken = fetchAntiForgeryToken(refreshedCookie) ?: return@withContext false
-            status = postRegistration(token, refreshedCookie, antiForgeryToken)
+            status = postRegistration(token, refreshedCookie, antiForgeryToken, serverEnvironment)
         }
 
         if (status in 200..299) {
@@ -50,7 +50,12 @@ class FcmTokenRegistrar(context: Context) {
         }
     }
 
-    private fun postRegistration(token: String, cookie: String, antiForgeryToken: String): Int {
+    private fun postRegistration(
+        token: String,
+        cookie: String,
+        antiForgeryToken: String,
+        serverEnvironment: String,
+    ): Int {
         val endpoint = BuildConfig.BASE_URL.trimEnd('/') + "/api/fcm/token"
         val connection = URL(endpoint).openConnection() as HttpURLConnection
         return try {
@@ -75,7 +80,7 @@ class FcmTokenRegistrar(context: Context) {
                     JSONObject()
                         .put("token", token)
                         .put("platform", "Android")
-                        .put("environment", "Development")
+                        .put("environment", serverEnvironment)
                         .put("applicationId", appContext.packageName)
                         .toString(),
                 )
@@ -88,6 +93,9 @@ class FcmTokenRegistrar(context: Context) {
             connection.disconnect()
         }
     }
+
+    private fun serverEnvironment(): String? =
+        FcmRuntimeEnvironment.serverName(BuildConfig.ENVIRONMENT)
 
     private fun fetchAntiForgeryToken(cookie: String): String? {
         val endpoint = BuildConfig.BASE_URL.trimEnd('/') + "/api/security/antiforgery"

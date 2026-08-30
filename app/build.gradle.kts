@@ -7,12 +7,11 @@ plugins {
     alias(libs.plugins.google.services)
 }
 
-// Firebase is intentionally limited to the registered Development Debug
-// package. Production and the unregistered release variants must continue to
-// build without a production push credential or google-services.json.
+// Development Release is intentionally unregistered. Development Debug and
+// the explicitly registered Production variants use variant-scoped Firebase
+// configuration files so environment credentials cannot cross boundaries.
 tasks.matching { task ->
-    (task.name.startsWith("processProduction") || task.name.startsWith("processDevelopmentRelease")) &&
-        task.name.endsWith("GoogleServices")
+    task.name.startsWith("processDevelopmentRelease") && task.name.endsWith("GoogleServices")
 }.configureEach {
     enabled = false
 }
@@ -23,8 +22,7 @@ android {
     buildToolsVersion = "36.0.0"
 
     defaultConfig {
-        // Provisional until the Play Console package name is formally chosen.
-        applicationId = "com.munitter.android.provisional"
+        applicationId = "com.munitter.android"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
@@ -42,7 +40,9 @@ android {
     productFlavors {
         create("development") {
             dimension = "environment"
-            applicationIdSuffix = ".development"
+            // Preserve the installed Development identity and its existing
+            // Firebase registration while Production adopts the formal ID.
+            applicationId = "com.munitter.android.provisional.development"
             versionNameSuffix = "-development"
             resValue("string", "app_name", "むにったー (開発)")
             buildConfigField("String", "ENVIRONMENT", "\"development\"")
@@ -124,7 +124,7 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
-    add("developmentImplementation", libs.androidx.fragment)
+    implementation(libs.androidx.fragment)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
