@@ -2,7 +2,7 @@
 
 ## 目的
 
-むにったー Web 版を UI、デザイン、主要機能の Single Source of Truth とし、Android は Jetpack Compose 上に WebView と OS 連携だけを載せる独立した薄いシェルとする。投稿一覧、プロフィール、DM などをネイティブで二重実装しない。初期版では JavaScript bridge も導入しない。
+むにったー Web 版を UI、デザイン、主要機能の Single Source of Truth とし、Android は Jetpack Compose 上に WebView と OS 連携だけを載せる独立した薄いシェルとする。投稿一覧、プロフィール、DM などをネイティブで二重実装しない。WebView bridgeは、OSでしか取得できない情報やOS操作をexact internal originへ渡す、versionedで狭い契約だけに限定する。
 
 ## 基本構成
 
@@ -46,9 +46,11 @@ minSdk 24 は Android 7.0 以降を対象にし、現行 WebView と Photo Picke
 
 Android 固有の大規模な CSS / JavaScript UI 分岐は増やさず、User-Agent の短い識別子も専用画面の条件には使わない。Development Edge-to-Edgeでは、全面WebViewへOS由来のCSS safe areaを適用する能力markerに限り、Development environmentと既存Android User-Agentの組み合わせを使用する。
 
+端末画面そのものを縮小表示するsurfaceの外形だけは、Android 12 / API 31以上の`WindowInsets.getRoundedCorner()`をsource of truthとする。四隅、window bounds、orientation、safe area、display cutout、source、confidenceを[Device Screen Geometry契約](DEVICE_SCREEN_GEOMETRY.md)でWebへ一方向に渡す。通常のModal、Bottom Sheet、Dialog、カードへこのgeometryを適用しない。
+
 ## Development Edge-to-Edge
 
-Developmentでは `enableEdgeToEdge()` のtransparent system barsの背後までWebViewを `[0,0]` からWindow全域へ配置する。背景surfaceはsystem bars背後まで描画し、操作UIはWebViewが公開する `env(safe-area-inset-*)` を既存CSS contractで避ける。端末固定のstatus/navigation bar px、JavaScript bridge、System Barだけの色合わせは使わない。
+Developmentでは `enableEdgeToEdge()` のtransparent system barsの背後までWebViewを `[0,0]` からWindow全域へ配置する。背景surfaceはsystem bars背後まで描画し、操作UIはWebViewが公開する `env(safe-area-inset-*)` を既存CSS contractで避ける。端末固定のstatus/navigation bar pxやSystem Barだけの色合わせは使わない。Device Screen Geometry bridgeのsafe area/cutoutは画面外形の共通metadataであり、既存のCSS safe area転送を置換したりcorner radiusと同一視したりしない。
 
 IMEはCompose `imePadding()`ではなく現行WebViewのVisualViewport resizeをWeb Fixed Composerが所有し、二重paddingを避ける。Productionは従来のWebView paddingとnavigation bar surfaceを維持する。実装とA57実測値は [DEVELOPMENT_EDGE_TO_EDGE_20260826.md](DEVELOPMENT_EDGE_TO_EDGE_20260826.md) に記録する。
 
@@ -62,7 +64,7 @@ IMEはCompose `imePadding()`ではなく現行WebViewのVisualViewport resizeを
 - サードパーティ Cookie は既定で無効。Turnstile の実機結果に基づかず広げない。
 - Web 権限は既定拒否。信頼済み origin の音声要求だけを `RECORD_AUDIO` と二段階で許可し、WebRTC カメラと位置情報は拒否する。
 - Production ログに Cookie、token、認証ヘッダー、署名 URL、投稿・DM 内容を出さない。
-- JavaScript bridge は未導入。通知はBridgeを新設せず、Webの既存認証済み通知APIをAndroidのforeground／WorkManager同期から再利用する。
+- Bridgeはexact internal HTTPS originへ限定し、version、型、方向を明示する。Device Screen GeometryはnativeからWebへの一方向送信、画像共有はorigin制限付きWeb Message listenerであり、汎用`addJavascriptInterface`は導入しない。通知はBridgeを新設せず、Webの既存認証済み通知APIをAndroidのforeground／WorkManager同期から再利用する。
 
 ## 戻る操作とライフサイクル
 

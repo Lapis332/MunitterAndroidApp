@@ -44,6 +44,8 @@
 - [ ] Home が表示され、無限スクロールできる。
 - [ ] おすすめ / フォロー中を左右スワイプできる。
 - [ ] サイドバーを開閉でき、二重表示や残留 overlay がない。
+- [ ] サイドバーCLOSED / OPEN / OPEN途中 / CLOSE途中で、メイン画面が固定radiusのカードではなく現在のディスプレイ外形を保って移動する。
+- [ ] `DeviceScreenGeometry`ログが`source=android-window-insets-rounded-corner fallback=false`を示し、四隅のradius/centerが記録される（API 31以上）。
 - [ ] プロフィールのタブを左右スワイプできる。
 - [ ] 投稿詳細へ移動し、Web 内の戻る操作で元の位置へ戻る。
 - [ ] Android の戻るボタン / 予測型戻るジェスチャーが自然に動く。
@@ -107,6 +109,7 @@ FCM と App Links は未導入である。WorkManager同期は端末のバック
 - [ ] 低速通信でローディングが固着せず、重複送信しない。
 - [ ] バックグラウンド復帰後に画面・スクロール・再生状態が不自然に初期化されない。
 - [ ] 縦横回転後に致命的なレイアウト崩れや WebView の重複がない。
+- [ ] 縦横回転後にDevice Screen Geometryが再取得され、orientation、window bounds、四隅が現在のWindowInsetsに更新される。
 - [ ] Android の文字サイズ変更で主要操作が失われない。
 - [ ] ダークテーマと Web 側テーマを切り替えても可読性を保つ。
 - [ ] アプリ終了後の再起動で Cookie と通常の閲覧状態が不必要に消えない。
