@@ -29,6 +29,12 @@ const skipInstall = /^(1|true|yes)$/i.test(
 const clientHeader = process.env.MUNITTER_DEVELOPMENT_CLIENT_HEADER ||
   'MunitterAndroid/0.1.0-development-debug';
 const cornerNames = ['topLeft', 'topRight', 'bottomRight', 'bottomLeft'];
+const cornerCssVariables = {
+  topLeft: ['--device-screen-corner-top-left-x', '--device-screen-corner-top-left-y'],
+  topRight: ['--device-screen-corner-top-right-x', '--device-screen-corner-top-right-y'],
+  bottomRight: ['--device-screen-corner-bottom-right-x', '--device-screen-corner-bottom-right-y'],
+  bottomLeft: ['--device-screen-corner-bottom-left-x', '--device-screen-corner-bottom-left-y'],
+};
 
 let selectedSerial = '';
 let page = null;
@@ -526,11 +532,26 @@ function assertGeometrySnapshot(sample, orientationPrefix, label) {
     assert(corner.center && corner.raw.center, `${label}: ${cornerName} center is missing`);
     assert(corner.source === expectedNativeSource, `${label}: ${cornerName} is not OS-native`);
     assert(corner.confidence === 'high', `${label}: ${cornerName} confidence is not high`);
+    const [xVariable, yVariable] = cornerCssVariables[cornerName];
+    const cssRadius = {
+      x: Number.parseFloat(sample.cssVariables[xVariable]),
+      y: Number.parseFloat(sample.cssVariables[yVariable]),
+    };
+    assert(Number.isFinite(cssRadius.x) && Math.abs(cssRadius.x - corner.radius.x) <= 0.75,
+      `${label}: ${cornerName} CSS X variable ${cssRadius.x} does not match normalized geometry ${corner.radius.x}`);
+    assert(Number.isFinite(cssRadius.y) && Math.abs(cssRadius.y - corner.radius.y) <= 0.75,
+      `${label}: ${cornerName} CSS Y variable ${cssRadius.y} does not match normalized geometry ${corner.radius.y}`);
+  }
+}
+
+function assertSurfaceRadiusState(sample, applied, label) {
+  for (const cornerName of cornerNames) {
     const computed = sample.surface.radius[cornerName];
-    assert(Math.abs(computed.x - corner.radius.x) <= 0.75,
-      `${label}: ${cornerName} computed X radius does not match normalized geometry`);
-    assert(Math.abs(computed.y - corner.radius.y) <= 0.75,
-      `${label}: ${cornerName} computed Y radius does not match normalized geometry`);
+    const expected = applied ? sample.geometry.corners[cornerName].radius : { x: 0, y: 0 };
+    assert(Math.abs(computed.x - expected.x) <= 0.75,
+      `${label}: ${cornerName} computed X radius ${computed.x} does not match ${applied ? 'active' : 'closed'} value ${expected.x}`);
+    assert(Math.abs(computed.y - expected.y) <= 0.75,
+      `${label}: ${cornerName} computed Y radius ${computed.y} does not match ${applied ? 'active' : 'closed'} value ${expected.y}`);
   }
 }
 
@@ -540,6 +561,7 @@ function assertDrawerState(sample, expectedProgress, label) {
   const expectedScale = 1 - expectedProgress * 0.08;
   assert(Math.abs(sample.surface.scale - expectedScale) <= 0.02,
     `${label}: visual scale ${sample.surface.scale} != ${expectedScale}`);
+  assertSurfaceRadiusState(sample, expectedProgress > 0.001, label);
   for (const cornerName of cornerNames) {
     const radius = sample.surface.radius[cornerName];
     const visual = sample.surface.visualRadius[cornerName];
