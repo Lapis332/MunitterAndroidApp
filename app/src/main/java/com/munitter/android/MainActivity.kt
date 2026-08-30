@@ -53,6 +53,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import com.munitter.android.notification.MunitterNotificationCenter
+import com.munitter.android.notification.FcmRuntimeEnvironment
 import com.munitter.android.notification.FcmTokenRegistrar
 import com.munitter.android.notification.FcmTokenStore
 import com.munitter.android.notification.NotificationSyncEngine
@@ -288,7 +289,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             deviceScreenGeometryBridge.onHostResumed()
         }
         if (notificationStartupReleased &&
-            BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)) {
+            FcmRuntimeEnvironment.isSupported(BuildConfig.ENVIRONMENT)) {
             lifecycleScope.launch { FcmTokenRegistrar(this@MainActivity).registerIfPossible() }
         }
         startForegroundNotificationSyncIfReady()
@@ -440,7 +441,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             releaseNotificationStartupWork("page-finished")
         }
         if (notificationStartupReleased &&
-            BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)) {
+            FcmRuntimeEnvironment.isSupported(BuildConfig.ENVIRONMENT)) {
             lifecycleScope.launch { FcmTokenRegistrar(this@MainActivity).registerIfPossible() }
         }
     }
@@ -462,7 +463,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         if (notificationInfrastructureInitialized) return
         notificationInfrastructureInitialized = true
         NotificationSyncScheduler.schedule(this)
-        initializeDevelopmentFcm()
+        initializeFcm()
     }
 
     private fun startForegroundNotificationSyncIfReady() {
@@ -478,8 +479,8 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         }
     }
 
-    private fun initializeDevelopmentFcm() {
-        if (!BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)) return
+    private fun initializeFcm() {
+        if (!FcmRuntimeEnvironment.isSupported(BuildConfig.ENVIRONMENT)) return
         FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
             if (!task.isSuccessful) {
                 android.util.Log.w(TAG, "FCM token retrieval failed", task.exception)

@@ -22,6 +22,8 @@ Firebase設定はenvironment-wide source setへ置かず、次のexact variant f
 
 Development Firebase projectへProduction packageを、Production Firebase projectへDevelopment packageを登録・配置しない。同じ物理端末でも各packageが取得したFCM tokenは別subscriptionとして扱い、環境間でDB、設定、ログへコピーしない。
 
+両variantは自分のexact Firebase設定からtokenを取得し、WebViewの認証session確立後またはresume時にartifact固有endpointへ登録を再試行する。初回token callbackがログインより先に発生しても、別environmentのtokenやsessionへfallbackしない。
+
 ## Signingと秘密値
 
 Development鍵とProduction upload鍵は別keystoreで、repository外の`%LOCALAPPDATA%\Munitter\AndroidSigning`へ保存する。password等はCurrentUser DPAPI envelopeで保護し、ACLは現在の利用者、SYSTEM、Administratorsだけに限定する。Git、Gradle properties、tracked settings、log、test artifactへ値を出さない。
