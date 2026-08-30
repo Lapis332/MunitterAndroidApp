@@ -83,6 +83,7 @@ class MunitterWebViewClient(
     }
 
     override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+        callbacks.onPageStarted(view)
         headerProbeGeneration += 1
         navigationStartedAt = SystemClock.uptimeMillis()
         activeMainFrameUrl = url
@@ -505,6 +506,7 @@ class MunitterWebViewClient(
         }.getOrNull()
 
     interface Callbacks {
+        fun onPageStarted(webView: WebView)
         fun onStartupNavigationStarted(generation: Long)
         fun onStartupPresentationReady(webView: WebView, generation: Long)
         fun onStartupNavigationFailed(generation: Long?)

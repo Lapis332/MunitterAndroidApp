@@ -3,6 +3,7 @@ package com.munitter.android
 import android.graphics.Color
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
@@ -20,6 +21,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.munitter.android.download.SecureDownloadCoordinator
+import com.munitter.android.device.AndroidDeviceScreenGeometryProvider
 import com.munitter.android.media.FileChooserCoordinator
 import com.munitter.android.media.NativeImageShareCoordinator
 import com.munitter.android.navigation.BackNavigationDecider
@@ -39,6 +41,7 @@ import com.munitter.android.ui.MunitterTheme
 import com.munitter.android.ui.DevelopmentEdgeToEdge
 import com.munitter.android.ui.StartupOverlayController
 import com.munitter.android.web.FullscreenMediaController
+import com.munitter.android.web.DeviceScreenGeometryBridge
 import com.munitter.android.web.MunitterWebChromeClient
 import com.munitter.android.web.MunitterWebViewClient
 import com.munitter.android.web.WebFailureKind
@@ -87,6 +90,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     private lateinit var fullscreen: FullscreenMediaController
     private lateinit var downloads: SecureDownloadCoordinator
     private lateinit var nativeImageShare: NativeImageShareCoordinator
+    private lateinit var deviceScreenGeometryBridge: DeviceScreenGeometryBridge
     private lateinit var notificationCenter: MunitterNotificationCenter
     private var notificationSyncJob: Job? = null
     private var pendingNotificationPermissionUrl: String? = null
@@ -142,6 +146,14 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         permissions = WebPermissionCoordinator(this, navigationPolicy)
         downloads = SecureDownloadCoordinator(this, BuildConfig.INTERNAL_HOST)
         nativeImageShare = NativeImageShareCoordinator(this, BuildConfig.INTERNAL_HOST)
+        deviceScreenGeometryBridge = DeviceScreenGeometryBridge(
+            provider = AndroidDeviceScreenGeometryProvider(this),
+            internalHost = BuildConfig.INTERNAL_HOST,
+            developmentLoggingEnabled = BuildConfig.ENVIRONMENT.equals(
+                "development",
+                ignoreCase = true,
+            ),
+        )
 
         val externalNavigator = ExternalNavigator(
             activity = this,
@@ -217,6 +229,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             onDownload = downloads::requestDownload,
         )
         nativeImageShare.attach(candidate)
+        deviceScreenGeometryBridge.attach(candidate)
 
         val restored = savedInstanceState
             ?.getBundle(STATE_WEBVIEW)
@@ -249,6 +262,13 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         }
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (::deviceScreenGeometryBridge.isInitialized) {
+            deviceScreenGeometryBridge.onHostConfigurationChanged()
+        }
+    }
+
     override fun onSaveInstanceState(outState: Bundle) {
         webView?.let { activeWebView ->
             val webState = Bundle()
@@ -263,6 +283,9 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         super.onResume()
         activityResumed = true
         webView?.onResume()
+        if (::deviceScreenGeometryBridge.isInitialized) {
+            deviceScreenGeometryBridge.onHostResumed()
+        }
         if (notificationStartupReleased &&
             BuildConfig.ENVIRONMENT.equals("development", ignoreCase = true)) {
             lifecycleScope.launch { FcmTokenRegistrar(this@MainActivity).registerIfPossible() }
@@ -292,6 +315,9 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         if (::nativeImageShare.isInitialized) {
             nativeImageShare.detach()
         }
+        if (::deviceScreenGeometryBridge.isInitialized) {
+            deviceScreenGeometryBridge.detach()
+        }
 
         webView?.let { activeWebView ->
             pendingNotificationPermissionRequest?.let(activeWebView::removeCallbacks)
@@ -314,6 +340,12 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             TAG,
             "Startup navigation generation=$generation activityElapsedMs=${activityElapsedMs()}",
         )
+    }
+
+    override fun onPageStarted(webView: WebView) {
+        if (::deviceScreenGeometryBridge.isInitialized) {
+            deviceScreenGeometryBridge.onDocumentStarted(webView)
+        }
     }
 
     override fun onStartupPresentationReady(webView: WebView, generation: Long) {
@@ -355,6 +387,9 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     }
 
     override fun onContentVisible(webView: WebView) {
+        if (::deviceScreenGeometryBridge.isInitialized) {
+            deviceScreenGeometryBridge.onDocumentAvailable(webView)
+        }
         uiState = uiState.copy(
             isLoading = false,
             hasVisibleContent = true,
@@ -363,6 +398,9 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     }
 
     override fun onPageFinished(webView: WebView) {
+        if (::deviceScreenGeometryBridge.isInitialized) {
+            deviceScreenGeometryBridge.onPageFinished(webView)
+        }
         if (developmentSessionFastPathPendingRecovery) {
             developmentSessionFastPathPendingRecovery = false
             if (StartupLaunchPolicy.isDevelopmentAuthenticationEntryPoint(
@@ -466,6 +504,9 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     override fun onRendererGone(webView: WebView) {
         navigationHeaderSnapshot = null
         lastVisibleHeaderSnapshot = null
+        if (::deviceScreenGeometryBridge.isInitialized) {
+            deviceScreenGeometryBridge.detach()
+        }
         (webView.parent as? ViewGroup)?.removeView(webView)
         if (this.webView === webView) {
             this.webView = null

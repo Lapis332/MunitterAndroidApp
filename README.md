@@ -72,6 +72,7 @@ $env:ANDROID_HOME = 'C:\Program Files (x86)\Android\android-sdk'
 
 - 前提: A57 (`SM_A576Q` / `a57x` / product `a57xjpn`) にワイヤレスADBで接続済み
 - 実行: `.\scripts\Invoke-A57DevelopmentSmoke.ps1`
+- Device Screen Geometry結合監査: `node .\scripts\device-screen-geometry-a57-audit.mjs`
 - 対象: `developmentDebug` (`com.munitter.android.development.debug`)
 - 自動確認:
   - `developmentDebug` APKビルド
@@ -106,9 +107,10 @@ Android側に実装するのは次の境界機能だけです。
 - Photo Picker優先の画像・複数画像・動画選択、カメラアプリ、汎用ファイル選択
 - 内部オリジンのマイク要求だけを対象にしたOS権限確認
 - Cookie/User-Agentを必要な内部ホストだけへ渡す安全なダウンロード
+- API 31以上の`WindowInsets.getRoundedCorner()`を優先した四隅独立のDevice Screen Geometryと、exact internal HTTPS documentへの一方向bridge
 - 起動、通信、DNS、タイムアウト、TLS、5xx、WebViewプロセス異常の表示と手動再読み込み
 
-UI、投稿/DM処理、認証、CSRF、SignalR、アップロード制限、メディア変換、テーマはWeb版の責務です。JavaScriptインターフェースは追加していません。
+UI、投稿/DM処理、認証、CSRF、SignalR、アップロード制限、メディア変換、テーマはWeb版の責務です。汎用`addJavascriptInterface`は追加せず、native/Web間契約はversionedかつorigin制限された専用bridgeだけに限定します。
 
 ## セキュリティ要点
 
@@ -132,6 +134,7 @@ UI、投稿/DM処理、認証、CSRF、SignalR、アップロード制限、メ�
 - [Android A57実機チェックリスト](docs/DEVICE_TEST_CHECKLIST.md)
 - [Development / Production共存運用](docs/ENVIRONMENT_MATRIX.md)
 - [Android Development Edge-to-Edge実機報告](docs/DEVELOPMENT_EDGE_TO_EDGE_20260826.md)
+- [Android Device Screen Geometry](docs/DEVICE_SCREEN_GEOMETRY.md)
 - [通知・App Links・Play Storeの次段階](docs/FUTURE_ROADMAP.md)
 - [今回の検証結果](docs/VERIFICATION_REPORT.md)
 
