@@ -44,6 +44,9 @@ import com.munitter.android.web.FullscreenMediaController
 import com.munitter.android.web.DeviceScreenGeometryBridge
 import com.munitter.android.web.MunitterWebChromeClient
 import com.munitter.android.web.MunitterWebViewClient
+import com.munitter.android.web.SensitiveMediaColdLaunchPolicy
+import com.munitter.android.web.SensitiveMediaColdLaunchResetCoordinator
+import com.munitter.android.web.SensitiveMediaSessionBridge
 import com.munitter.android.web.WebFailureKind
 import com.munitter.android.web.WebPermissionCoordinator
 import com.munitter.android.web.WebUiState
@@ -69,12 +72,14 @@ import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 
 class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     private val developmentEdgeToEdgeEnabled =
         DevelopmentEdgeToEdge.isEnabled(BuildConfig.ENVIRONMENT)
-    private var webView: WebView? = null
+    private var webView by mutableStateOf<WebView?>(null)
     private var munitterWebViewClient: MunitterWebViewClient? = null
     private var uiState by mutableStateOf(WebUiState())
     private var navigationHeaderSnapshot by mutableStateOf<Bitmap?>(null)
@@ -92,6 +97,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     private lateinit var downloads: SecureDownloadCoordinator
     private lateinit var nativeImageShare: NativeImageShareCoordinator
     private lateinit var deviceScreenGeometryBridge: DeviceScreenGeometryBridge
+    private lateinit var sensitiveMediaSessionBridge: SensitiveMediaSessionBridge
     private lateinit var notificationCenter: MunitterNotificationCenter
     private var notificationSyncJob: Job? = null
     private var pendingNotificationPermissionUrl: String? = null
@@ -156,6 +162,10 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
                 ignoreCase = true,
             ),
         )
+        sensitiveMediaSessionBridge = SensitiveMediaSessionBridge(
+            processSessionId = PROCESS_SENSITIVE_MEDIA_SESSION_ID,
+            internalHost = BuildConfig.INTERNAL_HOST,
+        )
 
         val externalNavigator = ExternalNavigator(
             activity = this,
@@ -169,7 +179,10 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             openInternalUrl = { url -> loadUrlWithDebugHeaders(url) },
         )
         fullscreen = FullscreenMediaController(this) { webView }
-        initializeWebView(savedInstanceState, intent?.dataString)
+        prepareSensitiveMediaSessionAndInitializeWebView(
+            savedInstanceState,
+            intent?.dataString,
+        )
 
         setContent {
             MunitterTheme {
@@ -190,6 +203,39 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
                 )
             }
         }
+    }
+
+    private fun prepareSensitiveMediaSessionAndInitializeWebView(
+        savedInstanceState: Bundle?,
+        requestedUrl: String?,
+    ) {
+        PROCESS_SENSITIVE_MEDIA_RESET_COORDINATOR.prepare(
+            startReset = { completed ->
+                sensitiveMediaSessionBridge.resetServerSessionBindingForColdLaunch(
+                    CookieManager.getInstance(),
+                    onCompleted = completed,
+                )
+            },
+            onCompleted = { cookieResetSucceeded ->
+                if (isFinishing || isDestroyed) return@prepare
+                val isFirstProcessLaunch =
+                    PROCESS_SENSITIVE_MEDIA_INITIAL_LAUNCH.compareAndSet(false, true)
+                val plan = SensitiveMediaColdLaunchPolicy.plan(
+                    isFirstProcessLaunch = isFirstProcessLaunch,
+                    cookieResetSucceeded = cookieResetSucceeded,
+                    requestedUrl = requestedUrl,
+                    safeFallbackUrl = StartupLaunchPolicy.defaultUrl(
+                        BuildConfig.BASE_URL,
+                        BuildConfig.ENVIRONMENT,
+                    ),
+                )
+                initializeWebView(
+                    savedInstanceState = savedInstanceState
+                        .takeIf { plan.restoreSavedWebViewState },
+                    requestedUrl = plan.requestedUrl,
+                )
+            },
+        )
     }
 
     private fun initializeWebView(savedInstanceState: Bundle?, requestedUrl: String?) {
@@ -232,10 +278,14 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         )
         nativeImageShare.attach(candidate)
         deviceScreenGeometryBridge.attach(candidate)
+        sensitiveMediaSessionBridge.attach(candidate)
 
         val restored = savedInstanceState
             ?.getBundle(STATE_WEBVIEW)
             ?.let(candidate::restoreState) != null
+        if (restored) {
+            candidate.post { sensitiveMediaSessionBridge.applyToCurrentDocument(candidate) }
+        }
         if (!restored) {
             attemptDevelopmentDebugBootstrap(resolveLaunchUrl(requestedUrl))
         } else if (BuildConfig.ENABLE_STARTUP_OVERLAY) {
@@ -345,6 +395,9 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     }
 
     override fun onPageStarted(webView: WebView) {
+        if (::sensitiveMediaSessionBridge.isInitialized) {
+            sensitiveMediaSessionBridge.applyToCurrentDocument(webView)
+        }
         if (::deviceScreenGeometryBridge.isInitialized) {
             deviceScreenGeometryBridge.onDocumentStarted(webView)
         }
@@ -389,6 +442,9 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     }
 
     override fun onContentVisible(webView: WebView) {
+        if (::sensitiveMediaSessionBridge.isInitialized) {
+            sensitiveMediaSessionBridge.applyToCurrentDocument(webView)
+        }
         if (::deviceScreenGeometryBridge.isInitialized) {
             deviceScreenGeometryBridge.onDocumentAvailable(webView)
         }
@@ -967,6 +1023,13 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             "/contact",
         )
         private const val TAG = "MainActivity"
+        private val PROCESS_SENSITIVE_MEDIA_SESSION_ID = UUID.randomUUID()
+            .toString()
+            .replace("-", "")
+            .lowercase()
+        private val PROCESS_SENSITIVE_MEDIA_RESET_COORDINATOR =
+            SensitiveMediaColdLaunchResetCoordinator()
+        private val PROCESS_SENSITIVE_MEDIA_INITIAL_LAUNCH = AtomicBoolean(false)
     }
 
     private data class DevelopmentDebugBootstrapHttpResponse(

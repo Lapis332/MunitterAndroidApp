@@ -62,4 +62,36 @@ class NotificationPageParserTest {
 
         assertEquals(2, page.unreadCount)
     }
+
+    @Test
+    fun `sensitive refresh row never restores body or avatar preview`() {
+        val page = NotificationPageParser.parse(
+            """
+            {
+              "items": [{
+                "id":"user-42",
+                "notificationType":"Muni",
+                "title":"secret title",
+                "message":"caption OCR filename.jpg",
+                "actorUserBaseId":17,
+                "actorName":"送信者A",
+                "actorImageUrl":"/profile/media/17/avatar",
+                "actorAvatarVersion":"v1",
+                "sensitiveMedia":true,
+                "mediaPreviewAllowed":false,
+                "isRead":false
+              }]
+            }
+            """.trimIndent(),
+        )
+
+        val item = page.items.single()
+        assertTrue(item.sensitiveMedia)
+        assertFalse(item.mediaPreviewAllowed)
+        assertEquals("Munitter通知", item.title)
+        assertEquals("センシティブなメディアを含む通知があります", item.message)
+        assertEquals(null, item.actorUserId)
+        assertEquals("", item.actorDisplayName)
+        assertEquals("", item.actorAvatarUrl)
+    }
 }

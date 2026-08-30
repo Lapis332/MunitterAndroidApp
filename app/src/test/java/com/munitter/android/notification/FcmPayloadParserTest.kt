@@ -69,4 +69,62 @@ class FcmPayloadParserTest {
         assertEquals("", parsed?.actorAvatarUrl)
         assertEquals(17L, parsed?.actorUserId)
     }
+
+    @Test
+    fun sensitivePayloadSuppressesBodyAndEveryRichPreviewInput() {
+        val parsed = FcmPayloadParser.parse(
+            mapOf(
+                "notification_id" to "dm:91",
+                "notification_type" to "NewMessage",
+                "title" to "secret title",
+                "body" to "secret caption and filename.jpg",
+                "sensitive_media" to "true",
+                "media_preview_allowed" to "false",
+                "actor_user_id" to "17",
+                "actor_display_name" to "送信者A",
+                "actor_avatar_url" to "/profile/media/17/avatar?v=avatar-1",
+                "actor_avatar_version" to "avatar-1",
+            ),
+        )
+
+        assertEquals(true, parsed?.sensitiveMedia)
+        assertEquals(false, parsed?.mediaPreviewAllowed)
+        assertEquals("新しいDM", parsed?.title)
+        assertEquals("センシティブなメディアを受信しました", parsed?.body)
+        assertNull(parsed?.actorUserId)
+        assertEquals("", parsed?.actorDisplayName)
+        assertEquals("", parsed?.actorAvatarUrl)
+        assertEquals("", parsed?.actorAvatarVersion)
+    }
+
+    @Test
+    fun explicitPreviewDenialFailsClosedWithoutSensitiveFlag() {
+        val parsed = FcmPayloadParser.parse(
+            mapOf(
+                "notification_id" to "post:42",
+                "notification_type" to "Muni",
+                "body" to "generated OCR text",
+                "media_preview_allowed" to "false",
+            ),
+        )
+
+        assertEquals(true, parsed?.sensitiveMedia)
+        assertEquals("センシティブなメディアを含む通知があります", parsed?.body)
+    }
+
+    @Test
+    fun malformedProtectionFlagsFailClosed() {
+        val parsed = FcmPayloadParser.parse(
+            mapOf(
+                "notification_id" to "dm:92",
+                "notification_type" to "dm",
+                "body" to "must not escape",
+                "sensitive_media" to "unknown",
+            ),
+        )
+
+        assertEquals(true, parsed?.sensitiveMedia)
+        assertEquals(false, parsed?.mediaPreviewAllowed)
+        assertEquals("センシティブなメディアを受信しました", parsed?.body)
+    }
 }

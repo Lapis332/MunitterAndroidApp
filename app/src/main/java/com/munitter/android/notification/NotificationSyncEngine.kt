@@ -66,11 +66,15 @@ class NotificationSyncEngine(context: Context) {
                         } else {
                             val isNew = item.id !in activeBefore
                             active += item.id
-                            val avatarSpec = avatarLoader.specFor(
-                                actorUserId = item.actorUserId,
-                                relativeUrl = item.actorAvatarUrl,
-                                version = item.actorAvatarVersion,
-                            )
+                            val avatarSpec = if (item.mediaPreviewAllowed && !item.sensitiveMedia) {
+                                avatarLoader.specFor(
+                                    actorUserId = item.actorUserId,
+                                    relativeUrl = item.actorAvatarUrl,
+                                    version = item.actorAvatarVersion,
+                                )
+                            } else {
+                                null
+                            }
                             val cachedAvatar = avatarSpec?.let(avatarLoader::loadCached)
                             if (cachedAvatar != null) latestActorAvatar = cachedAvatar
                             center.show(
