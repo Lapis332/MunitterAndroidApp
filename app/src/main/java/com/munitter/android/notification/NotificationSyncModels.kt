@@ -13,6 +13,8 @@ data class MunitterNotification(
     val actorDisplayName: String = "",
     val actorAvatarUrl: String = "",
     val actorAvatarVersion: String = "",
+    val sensitiveMedia: Boolean = false,
+    val mediaPreviewAllowed: Boolean = true,
 )
 
 data class NotificationPage(
@@ -32,20 +34,38 @@ object NotificationPageParser {
                 val id = item.optString("id").trim()
                 if (id.isEmpty()) continue
                 val actorUserId = item.optLong("actorUserBaseId", 0L).takeIf { it > 0L }
+                val sensitiveMedia = SensitiveNotificationPolicy.isProtected(
+                    sensitiveMedia = item.opt("sensitiveMedia")?.toString(),
+                    mediaPreviewAllowed = item.opt("mediaPreviewAllowed")?.toString(),
+                )
+                val notificationType = item.optString("notificationType", "notification")
+                    .trim().ifBlank { "notification" }
                 add(
                     MunitterNotification(
                         id = id,
-                        title = item.optString("title", "Munitter通知").ifBlank { "Munitter通知" },
-                        message = item.optString("message", "新しい通知があります")
-                            .ifBlank { "新しい通知があります" },
+                        title = SensitiveNotificationPolicy.safeTitle(
+                            notificationType,
+                            item.optString("title", "Munitter通知").ifBlank { "Munitter通知" },
+                            sensitiveMedia,
+                        ),
+                        message = SensitiveNotificationPolicy.safeBody(
+                            notificationType,
+                            item.optString("message", "新しい通知があります")
+                                .ifBlank { "新しい通知があります" },
+                            sensitiveMedia,
+                        ),
                         targetUrl = item.optString("targetUrl").trim(),
                         isRead = item.optBoolean("isRead", true),
-                        notificationType = item.optString("notificationType", "notification")
-                            .trim().ifBlank { "notification" },
-                        actorUserId = actorUserId,
-                        actorDisplayName = item.optString("actorName").trim(),
-                        actorAvatarUrl = item.optString("actorImageUrl").trim(),
-                        actorAvatarVersion = item.optString("actorAvatarVersion").trim(),
+                        notificationType = notificationType,
+                        actorUserId = actorUserId.takeUnless { sensitiveMedia },
+                        actorDisplayName = item.optString("actorName").trim()
+                            .takeUnless { sensitiveMedia }.orEmpty(),
+                        actorAvatarUrl = item.optString("actorImageUrl").trim()
+                            .takeUnless { sensitiveMedia }.orEmpty(),
+                        actorAvatarVersion = item.optString("actorAvatarVersion").trim()
+                            .takeUnless { sensitiveMedia }.orEmpty(),
+                        sensitiveMedia = sensitiveMedia,
+                        mediaPreviewAllowed = !sensitiveMedia,
                     ),
                 )
             }

@@ -44,6 +44,8 @@ class MunitterFirebaseMessagingService : FirebaseMessagingService() {
             actorDisplayName = payload.actorDisplayName,
             actorAvatarUrl = payload.actorAvatarUrl,
             actorAvatarVersion = payload.actorAvatarVersion,
+            sensitiveMedia = payload.sensitiveMedia,
+            mediaPreviewAllowed = payload.mediaPreviewAllowed,
         )
         val unreadCount = if (payload.hasUnreadCount) {
             payload.unreadCount
@@ -51,11 +53,15 @@ class MunitterFirebaseMessagingService : FirebaseMessagingService() {
             activeIds.size
         }
         val center = MunitterNotificationCenter(this)
-        val avatarSpec = avatarLoader.specFor(
-            actorUserId = payload.actorUserId,
-            relativeUrl = payload.actorAvatarUrl,
-            version = payload.actorAvatarVersion,
-        )
+        val avatarSpec = if (payload.mediaPreviewAllowed && !payload.sensitiveMedia) {
+            avatarLoader.specFor(
+                actorUserId = payload.actorUserId,
+                relativeUrl = payload.actorAvatarUrl,
+                version = payload.actorAvatarVersion,
+            )
+        } else {
+            null
+        }
         val cachedAvatar = avatarSpec?.let(avatarLoader::loadCached)
         center.show(notification, unreadCount, alert = true, actorAvatar = cachedAvatar)
         center.updateSummary(unreadCount, cachedAvatar)

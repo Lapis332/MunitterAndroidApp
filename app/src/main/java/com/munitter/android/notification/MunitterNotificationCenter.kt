@@ -128,7 +128,7 @@ class MunitterNotificationCenter(context: Context) {
         notification: MunitterNotification,
         actorAvatar: Bitmap?,
     ) {
-        if (actorAvatar == null) {
+        if (notification.sensitiveMedia || !notification.mediaPreviewAllowed || actorAvatar == null) {
             builder.setStyle(NotificationCompat.BigTextStyle().bigText(notification.message))
             return
         }
