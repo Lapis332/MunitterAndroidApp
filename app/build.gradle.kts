@@ -28,6 +28,8 @@ fun signingEnvironment(prefix: String): Map<String, String> = mapOf(
 
 val developmentSigning = signingEnvironment("DEVELOPMENT")
 val productionSigning = signingEnvironment("PRODUCTION")
+val developmentDistributionTask = Regex("(?i)(assemble|bundle|package|install)Development(Debug|Release)")
+val productionDistributionTask = Regex("(?i)(assemble|bundle|package|install)ProductionRelease")
 
 android {
     namespace = "com.munitter.android"
@@ -288,17 +290,62 @@ val verifyProductionSigning by tasks.registering {
     }
 }
 
+val verifySigningTaskBoundaries by tasks.registering {
+    group = "verification"
+    description = "Keeps protected signing on distributable artifacts without blocking JVM-only tests."
+    doLast {
+        listOf(
+            "assembleDevelopmentDebug",
+            "bundleDevelopmentRelease",
+            "packageDevelopmentRelease",
+            "installDevelopmentDebug",
+        ).forEach { taskName ->
+            check(developmentDistributionTask.matches(taskName)) {
+                "Development distribution task lost its signing gate: $taskName"
+            }
+        }
+        listOf(
+            "assembleDevelopmentDebugUnitTest",
+            "assembleDevelopmentReleaseUnitTest",
+            "compileDevelopmentDebugUnitTestKotlin",
+        ).forEach { taskName ->
+            check(!developmentDistributionTask.matches(taskName)) {
+                "JVM-only Development test incorrectly requires signing: $taskName"
+            }
+        }
+        listOf(
+            "assembleProductionRelease",
+            "bundleProductionRelease",
+            "packageProductionRelease",
+            "installProductionRelease",
+        ).forEach { taskName ->
+            check(productionDistributionTask.matches(taskName)) {
+                "Production distribution task lost its signing gate: $taskName"
+            }
+        }
+        listOf(
+            "assembleProductionReleaseUnitTest",
+            "compileProductionReleaseUnitTestKotlin",
+        ).forEach { taskName ->
+            check(!productionDistributionTask.matches(taskName)) {
+                "JVM-only Production test incorrectly requires signing: $taskName"
+            }
+        }
+    }
+}
+
 tasks.configureEach {
     when {
-        name.matches(Regex("(?i).*(assemble|bundle|package|install)Development(Debug|Release).*")) ->
+        developmentDistributionTask.matches(name) ->
             dependsOn(verifyDevelopmentSigning)
-        name.matches(Regex("(?i).*(assemble|bundle|package|install)ProductionRelease.*")) ->
+        productionDistributionTask.matches(name) ->
             dependsOn(verifyProductionSigning)
     }
 }
 
 tasks.named("preBuild") {
     dependsOn(verifyEnvironmentIsolation)
+    dependsOn(verifySigningTaskBoundaries)
 }
 
 kotlin {
