@@ -1,5 +1,7 @@
 # むにったー Android（初期版）
 
+独自ハッシュの長期開発規約は [AGENTS.md](AGENTS.md)、既存SHA-256の生成・検証契約と段階的移行は [BLAKE3標準と棚卸し](docs/HASH_STANDARD.md) を参照してください。
+
 既存のむにったーWeb版を唯一のUI・機能本体として表示する、Kotlin + Jetpack Compose + WebViewの薄いAndroidシェルです。投稿一覧やプロフィール等をAndroid側へ二重実装していません。
 
 > [!IMPORTANT]
