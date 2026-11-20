@@ -8,11 +8,17 @@
 |---|---|---|---|---|---|---|---|---|
 | Development | `developmentDebug` | `むにったー DEV` | `com.munitter.android.development.debug` | `https://dev.munitter.com/` | `munitter-dev-fcm-2026-db973d` | Development専用 | 正式icon＋小型DEV badge | Productionと共存 |
 | Development | `developmentRelease` | `むにったー DEV` | `com.munitter.android.development` | `https://dev.munitter.com/` | `munitter-dev-fcm-2026-db973d` | Development専用 | 正式icon＋小型DEV badge | Productionと共存 |
-| Production | `productionRelease` | `むにったー` | `com.munitter.android` | `https://munitter.com/` | `munitter-prod-fcm-2026-df60ow` | Production upload key／Play App Signing | 正式icon（badgeなし） | Developmentと共存 |
+| Production | `productionRelease` | `むにったー` | `com.munitter.android` | `https://munitter.com/` | `munitter-production` | Production upload key／Play App Signing | 正式icon（badgeなし） | Developmentと共存 |
 
 `productionDebug`は存在させない。Productionには正式Release identity以外のdebug署名packageを作らず、Private Production Validationも`productionRelease`またはPlay Internal Testing artifactを使う。
 
 ## Firebase / FCM
+
+Productionの正式cloud identityは、所有者が実際のFirebase Consoleで確認したSpark project `munitter-production`（project number `760473226308`）と、その中に登録したAndroid app `1:760473226308:android:fe0fc56e78eef174f68011`です。公式client configurationは`com.munitter.android`だけを含み、build gateがproject ID・number・Android app ID・packageを照合します。
+
+旧artifactに含まれる`munitter-prod-fcm-2026-df60ow`は、repository設定とAPKの一致だけが確認され、cloud ownershipは確認されていません。新しい署名済みartifactの配備・実token登録・限定FCM配信は別の実機gateです。ソース変更やlocal buildだけで実配信PASSにしません。DevelopmentのFirebase file、credential、projectは変更しません。
+
+2026-11-21のDevelopment source検証では、environment/signing-task boundary、Development Debug・Development Release・Production ReleaseのJVM tests各108件（合計324、failure/error/skip 0）、Production lint（error 0、warning 17）が通過しました。旧project・異なるproject number・異なるAndroid app ID・Development packageの4つの変更は実際のbuild gateが拒否し、公式client fileを復元しました。コンパイル済みProduction resourcesのproject ID・sender ID・app IDも上記authorityと一致します。署名・配備・実機FCM配信は、このlocal検証とは別の証拠で確認します。
 
 Firebase設定はenvironment-wide source setへ置かず、次のexact variant fileだけを許可する。
 

@@ -9,7 +9,9 @@ plugins {
 }
 
 val developmentFirebaseProject = "munitter-dev-fcm-2026-db973d"
-val productionFirebaseProject = "munitter-prod-fcm-2026-df60ow"
+val productionFirebaseProject = "munitter-production"
+val productionFirebaseProjectNumber = "760473226308"
+val productionFirebaseAppId = "1:760473226308:android:fe0fc56e78eef174f68011"
 val developmentApplicationId = "com.munitter.android.development"
 val productionApplicationId = "com.munitter.android"
 val developmentBaseUrl = "https://dev.munitter.com/"
@@ -239,6 +241,19 @@ val verifyEnvironmentIsolation by tasks.registering {
                 contract.projectId == productionFirebaseProject &&
                     packageName.startsWith("com.munitter.android.development")
             }) { "Development package found in Production Firebase configuration" }
+            if (contract.projectId == productionFirebaseProject) {
+                check(projectInfo?.get("project_number") == productionFirebaseProjectNumber) {
+                    "Production Firebase project number mismatch"
+                }
+                check(packages == setOf(productionApplicationId) && clients.size == 1) {
+                    "Production Firebase configuration must bind exactly the Release application"
+                }
+                @Suppress("UNCHECKED_CAST")
+                val clientInfo = clients.single()["client_info"] as? Map<String, Any?>
+                check(clientInfo?.get("mobilesdk_app_id") == productionFirebaseAppId) {
+                    "Production Firebase Android app identity mismatch"
+                }
+            }
         }
 
         check(developmentFirebaseProject != productionFirebaseProject) {

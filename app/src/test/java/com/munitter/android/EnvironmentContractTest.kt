@@ -32,7 +32,7 @@ class EnvironmentContractTest {
             "production" -> {
                 assertEquals("https://munitter.com/", BuildConfig.BASE_URL)
                 assertEquals("munitter.com", BuildConfig.INTERNAL_HOST)
-                assertEquals("munitter-prod-fcm-2026-df60ow", BuildConfig.FIREBASE_PROJECT_ID)
+                assertEquals("munitter-production", BuildConfig.FIREBASE_PROJECT_ID)
                 assertEquals("munitter.cloudflareaccess.com", BuildConfig.CLOUDFLARE_ACCESS_HOST)
                 assertEquals("www.munitter.com", BuildConfig.CLOUDFLARE_ACCESS_CALLBACK_HOST)
                 assertEquals("", BuildConfig.ENVIRONMENT_BADGE)
