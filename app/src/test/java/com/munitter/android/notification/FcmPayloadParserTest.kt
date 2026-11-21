@@ -46,13 +46,13 @@ class FcmPayloadParserTest {
     }
 
     @Test
-    fun supportsCamelCaseAndNeverReturnsNegativeUnreadCount() {
+    fun supportsCamelCaseAndRejectsNegativeUnreadCountAsNonAuthoritative() {
         val parsed = FcmPayloadParser.parse(
             mapOf("notificationId" to "group:7", "unreadCount" to "-4", "targetUrl" to "/groups"),
         )
         assertEquals("group:7", parsed?.notificationId)
         assertEquals(0, parsed?.unreadCount)
-        assertEquals(true, parsed?.hasUnreadCount)
+        assertEquals(false, parsed?.hasUnreadCount)
         assertEquals("/groups", parsed?.targetUrl)
     }
 

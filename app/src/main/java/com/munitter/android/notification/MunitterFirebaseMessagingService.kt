@@ -32,7 +32,19 @@ class MunitterFirebaseMessagingService : FirebaseMessagingService() {
             return
         }
         val store = NotificationStateStore(this)
-        val activeIds = store.addActiveId(payload.notificationId)
+        val authoritativeUnreadCount = payload.unreadCount.takeIf { payload.hasUnreadCount }
+        val unreadCount = NotificationUnreadCount.resolveForPush(
+            authoritativeUnreadCount,
+            (store.readActiveIds() + payload.notificationId).size,
+        )
+        if (unreadCount == null) {
+            // Pushes may arrive out of order. An older zero must not erase a
+            // newer notification; let the existing worker fetch current state.
+            NotificationSyncScheduler.requestRefresh(this)
+            Log.i(TAG, "FCM zero unread count requested authoritative refresh")
+            return
+        }
+        store.addActiveId(payload.notificationId)
         val notification = MunitterNotification(
             id = payload.notificationId,
             title = payload.title,
@@ -47,11 +59,6 @@ class MunitterFirebaseMessagingService : FirebaseMessagingService() {
             sensitiveMedia = payload.sensitiveMedia,
             mediaPreviewAllowed = payload.mediaPreviewAllowed,
         )
-        val unreadCount = if (payload.hasUnreadCount) {
-            payload.unreadCount
-        } else {
-            activeIds.size
-        }
         val center = MunitterNotificationCenter(this)
         val avatarSpec = if (payload.mediaPreviewAllowed && !payload.sensitiveMedia) {
             avatarLoader.specFor(

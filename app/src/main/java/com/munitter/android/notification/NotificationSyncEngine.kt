@@ -26,6 +26,7 @@ class NotificationSyncEngine(context: Context) {
         var offset = 0
         var hasMore = false
         var firstPage = true
+        var authoritativeUnreadCount: Int? = null
         var latestActorAvatar: Bitmap? = null
         var response: NotificationFetchResult
 
@@ -46,7 +47,9 @@ class NotificationSyncEngine(context: Context) {
                         MunitterNotificationCenter.TAG,
                         "Notification sync page items=${page.items.size} unreadCount=${page.unreadCount} hasMore=${page.hasMore}",
                     )
-                    if (firstPage && page.unreadCount == 0) {
+                    if (firstPage) authoritativeUnreadCount = page.unreadCount
+                    if (firstPage &&
+                        NotificationUnreadCount.isAuthoritativelyEmpty(authoritativeUnreadCount)) {
                         // The notifications page does not contain DM rows, so
                         // an empty page alone cannot prove that a DM push was
                         // read. The server-provided aggregate is authoritative
@@ -79,7 +82,7 @@ class NotificationSyncEngine(context: Context) {
                             if (cachedAvatar != null) latestActorAvatar = cachedAvatar
                             center.show(
                                 item,
-                                active.size,
+                                NotificationUnreadCount.resolve(authoritativeUnreadCount, active.size),
                                 alert = isNew,
                                 actorAvatar = cachedAvatar,
                             )
@@ -88,7 +91,7 @@ class NotificationSyncEngine(context: Context) {
                                     latestActorAvatar = fetchedAvatar
                                     center.show(
                                         item,
-                                        active.size,
+                                        NotificationUnreadCount.resolve(authoritativeUnreadCount, active.size),
                                         alert = false,
                                         actorAvatar = fetchedAvatar,
                                     )
@@ -104,11 +107,12 @@ class NotificationSyncEngine(context: Context) {
         } while (hasMore && activeBefore.any { it !in seen })
 
         stateStore.writeActiveIds(active)
-        if (active.isEmpty()) {
-            center.updateSummary(0)
-        } else {
-            center.updateSummary(active.size, latestActorAvatar)
-        }
+        // DM rows are absent from this page, so local IDs cannot replace the
+        // server's aggregate, including after only some messages were read.
+        center.updateSummary(
+            NotificationUnreadCount.resolve(authoritativeUnreadCount, active.size),
+            latestActorAvatar,
+        )
         NotificationSyncOutcome.Succeeded
     }
 
