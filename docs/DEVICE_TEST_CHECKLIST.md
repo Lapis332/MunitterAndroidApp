@@ -93,9 +93,9 @@
 - [ ] Web の通知画面を表示できる。
 - [ ] Android 13以降で通知権限が認証済み画面の表示後に一度だけ要求され、拒否後もアプリを利用できる。
 - [ ] 通知Channel `munitter_notifications` が存在し、badge／通知ドットが端末設定で許可されている。
-- [ ] Development通知APIの未読通知がAndroid通知領域へ表示され、ホーム画面のアプリアイコンに通知ドット／badgeが付く。
+- [ ] Development／Productionそれぞれの未読通知が対応アプリのAndroid通知領域へ表示され、ホーム画面のアイコンに通知ドット／badgeが付く。
 - [ ] 通知タップで既存singleTask WebViewが再利用され、対象URLまたはNotificationsへ遷移する。
-- [ ] Web側で通知を既読化すると、次回同期でOS通知とbadgeが消える。
+- [ ] Web側で通知を部分既読化すると次回同期のbadge件数がサーバーの集約未読数と一致し、全既読化するとOS通知とbadgeが消える。
 - [ ] 一般外部 HTTPS リンクが標準ブラウザーで開く。
 - [ ] 内部 HTTPS リンクが WebView 内で開く。
 - [ ] `mailto:` と `tel:` は対応アプリがある場合だけ安全に開く。
@@ -103,7 +103,7 @@
 - [ ] HTTP、`file:`、`javascript:`、不明 scheme を WebView 内で開かない。
 - [ ] `window.open` / 新規タブ相当のリンクで、内部・OAuth・外部の規則が維持される。
 
-FCM と App Links は未導入である。WorkManager同期は端末のバックグラウンド制限と最短15分周期の影響を受けるため、FCM相当の即時性やアプリforce-stop中の受信を合格扱いにしない。
+FCMとApp Linksのクライアント実装は導入済みです。環境ごとのFirebase identityと実配信の確認条件は[環境matrix](ENVIRONMENT_MATRIX.md)を参照してください。WorkManager同期は補完経路であり、端末のバックグラウンド制限と最短15分周期の影響を受けます。ソース・ビルドの成功だけでFCM実配信やアプリforce-stop中の受信を合格扱いにしないでください。バッジの表示形式（ドット／数値）はランチャーと利用者の端末設定にも依存します。
 
 ## 7. 障害、復帰、表示
 

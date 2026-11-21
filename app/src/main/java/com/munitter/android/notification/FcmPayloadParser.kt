@@ -42,8 +42,8 @@ object FcmPayloadParser {
             .ifBlank { data["targetUrl"]?.trim().orEmpty() }
             .let { url -> if (url.startsWith("/")) url else "/notifications" }
         val unreadRaw = data["unread_count"] ?: data["unreadCount"]
-        val unreadValue = unreadRaw?.toIntOrNull()
-        val unreadCount = unreadValue?.coerceAtLeast(0) ?: 0
+        val unreadValue = unreadRaw?.toIntOrNull()?.takeIf { it >= 0 }
+        val unreadCount = unreadValue ?: 0
         val actorUserId = (data["actor_user_id"] ?: data["actorUserId"])
             ?.trim()
             ?.toLongOrNull()
