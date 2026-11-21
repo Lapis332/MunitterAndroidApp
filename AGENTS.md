@@ -1,5 +1,14 @@
 # Munitter development rules
 
+## Shared service inventory
+
+Before investigating Munitter service names, purposes, account/resource IDs, Production/Development, related projects, or configuration locations, read the latest [canonical private service inventory](https://github.com/Lapis332/MunitterWebApplication/blob/master/MunitterWebApplication/Docs/SERVICE_ACCOUNTS.md). Shared service rules are in the [Web root entry](https://github.com/Lapis332/MunitterWebApplication/blob/master/AGENTS.md) and the service-inventory section of the [Web app entry](https://github.com/Lapis332/MunitterWebApplication/blob/master/MunitterWebApplication/AGENTS.md). Keep the existing Android hash, signing, build, device, and release rules.
+
+- Reuse recorded information; investigate only missing or conflicting items through the inventory's configuration index and sources. Distinguish confirmed facts, configuration definitions, and unconfirmed items. Do not infer IDs or environments, or confuse a shared parent account with shared resources or credentials.
+- The private Git inventory is the single source of truth across Windows, VM, Production, and Mac. Do not create a separate local inventory or copy its private account metadata into this public Android repository.
+- When configuration changes, update the canonical inventory in the same work with purpose, account/resource ID, environment, related project, configuration location, confirmation date, and evidence through the existing commit/push/PR/master process. Never record secrets.
+- Changes to Production services, provider settings, credentials, DNS, Access, or public routes require explicit user authorization for the target and change. Ordinary app-release instructions do not provide blanket authorization for service changes; adding these references does not authorize deployment, app distribution, or provider sends.
+
 ## Long-term hash standard
 
 BLAKE3 is the first choice and formal standard for new Munitter-owned file integrity checks, content addressing/deduplication, backup checksums, build artifact hashes, Harness evidence manifests/source attestations, cache keys, and large-data verification. This is a continuing development rule, not a temporary optimization. Use a 256-bit (32-byte) digest; the normal hexadecimal representation is 64 lowercase characters.
