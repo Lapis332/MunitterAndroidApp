@@ -71,7 +71,7 @@ class NotificationStateCoordinatorTest {
     }
 
     @Test
-    fun `aggregate coalesces FCM source cards and retains mapping for delayed pushes`() {
+    fun `synthetic concrete-source aggregate coalesces cards and retains delayed push mapping`() {
         val fixture = Fixture()
         fixture.push("user:1", 2)
         fixture.push("user:2", 2)
@@ -96,13 +96,66 @@ class NotificationStateCoordinatorTest {
     }
 
     @Test
-    fun `read aggregate removes its card by source identity`() {
+    fun `synthetic concrete-source read aggregate removes its card by source identity`() {
         val fixture = Fixture()
         fixture.push("user:1")
         fixture.refresh(row("muni-old", sources = setOf("user-1")))
         fixture.refresh(row("muni-new", read = true, sources = setOf("user-1")), count = 1)
 
         assertTrue(fixture.nativeIds.isEmpty())
+        assertEquals(1, fixture.badge)
+    }
+
+    @Test
+    fun `current server snapshot-only group updates summary without adding an uncorrelated child`() {
+        val fixture = Fixture()
+        fixture.push("user:12", 4)
+        fixture.push("dm:19:7", 4)
+        val page = NotificationPageParser.parse(
+            javaClass.getResourceAsStream("/native-modern-grouped-notification.json")!!
+                .bufferedReader().use { it.readText() },
+        )
+        fixture.coordinator.applyRefresh(fixture.coordinator.beginSync(), page.items, page.unreadCount, fixture::publish)
+
+        assertEquals(setOf("user-12", "dm:19:7"), fixture.nativeIds)
+        assertEquals(4, fixture.badge)
+        assertEquals(2, fixture.alerts)
+    }
+
+    @Test
+    fun `snapshot-only read with unrelated unread cannot infer source or DM read state`() {
+        val fixture = Fixture()
+        fixture.push("user:12", 3)
+        fixture.push("dm:19:7", 3)
+        val snapshot = "grouped-muni-17-20261122-12-639046000000000000"
+        fixture.refresh(row(snapshot, read = true), count = 1)
+
+        assertEquals(setOf("user-12", "dm:19:7"), fixture.nativeIds)
+        assertEquals(1, fixture.badge)
+        fixture.refresh(count = 0)
+        assertTrue(fixture.nativeIds.isEmpty())
+    }
+
+    @Test
+    fun `legacy unmapped snapshot cards are retired while summary and DM remain`() {
+        val snapshot = "grouped-muni-17-20261122-12-639046000000000000"
+        val fixture = Fixture(NotificationState(mapOf(
+            snapshot to setOf(snapshot),
+            "dm:19:7" to setOf("dm:19:7"),
+        )))
+        fixture.refresh(row(snapshot), count = 3)
+
+        assertEquals(setOf("dm:19:7"), fixture.nativeIds)
+        assertEquals(3, fixture.badge)
+    }
+
+    @Test
+    fun `valid push retires obsolete snapshot-only presentation before its first render`() {
+        val snapshot = "grouped-muni-17-20261122-12-639046000000000000"
+        val fixture = Fixture(NotificationState(mapOf(snapshot to setOf(snapshot))))
+        fixture.push("user:12", 1)
+
+        assertEquals(setOf("user-12"), fixture.nativeIds)
         assertEquals(1, fixture.badge)
     }
 

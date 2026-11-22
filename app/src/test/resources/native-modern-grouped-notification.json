@@ -1,0 +1,13 @@
+{
+  "items": [
+    {
+      "id": "grouped-muni-2-20300105-12-640294415400000000",
+      "notificationType": "Muni",
+      "sourceNotificationIds": "grouped-muni-2-20300105-12-640294415400000000",
+      "isRead": false,
+      "actorUserBaseId": 2
+    }
+  ],
+  "hasMore": false,
+  "unreadCount": 4
+}

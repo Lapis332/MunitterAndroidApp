@@ -14,17 +14,24 @@ sealed interface NotificationFetchResult {
     data class RetryableFailure(val cause: Throwable) : NotificationFetchResult
 }
 
-class MunitterNotificationRepository {
-    fun fetchRefresh(): NotificationFetchResult = fetch("Notifications?handler=Refresh")
+internal class MunitterNotificationRepository {
+    private val sessionFence = NotificationSessionFence {
+        runCatching { CookieManager.getInstance().getCookie(BuildConfig.BASE_URL) }.getOrNull()
+    }
 
-    fun fetchMore(offset: Int): NotificationFetchResult =
-        fetch("Notifications?handler=More&offset=$offset")
+    fun captureSession(): NotificationRequestSession = sessionFence.capture()
 
-    private fun fetch(path: String): NotificationFetchResult {
+    fun isCurrentSession(session: NotificationRequestSession): Boolean = sessionFence.isCurrent(session)
+
+    fun fetchRefresh(session: NotificationRequestSession): NotificationFetchResult =
+        fetch("Notifications?handler=Refresh", session)
+
+    fun fetchMore(offset: Int, session: NotificationRequestSession): NotificationFetchResult =
+        fetch("Notifications?handler=More&offset=$offset", session)
+
+    private fun fetch(path: String, session: NotificationRequestSession): NotificationFetchResult {
         val endpoint = BuildConfig.BASE_URL.trimEnd('/') + "/" + path
-        val cookie = runCatching {
-            CookieManager.getInstance().getCookie(BuildConfig.BASE_URL)
-        }.getOrNull()
+        val cookie = session.cookie
         if (cookie.isNullOrBlank()) {
             return NotificationFetchResult.Unauthorized
         }

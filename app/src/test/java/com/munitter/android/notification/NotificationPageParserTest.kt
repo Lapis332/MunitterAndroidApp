@@ -7,7 +7,21 @@ import org.junit.Test
 
 class NotificationPageParserTest {
     @Test
-    fun `grouped HTTP row retains all canonical source IDs for FCM reconciliation`() {
+    fun `actual modern grouped projection exposes a snapshot token not underlying event IDs`() {
+        val page = NotificationPageParser.parse(
+            javaClass.getResourceAsStream("/native-modern-grouped-notification.json")!!
+                .bufferedReader().use { it.readText() },
+        )
+        val item = page.items.single()
+        assertEquals(setOf(item.id), item.sourceNotificationIds)
+        assertTrue(NotificationIdentity.isSnapshotOnlyAggregate(item.id, item.sourceNotificationIds))
+        assertFalse(item.sourceNotificationIds.contains("user-11"))
+        assertFalse(item.sourceNotificationIds.contains("user-12"))
+        assertEquals(4, page.unreadCount)
+    }
+
+    @Test
+    fun `synthetic concrete-source row retains canonical IDs without claiming current grouped contract`() {
         val page = NotificationPageParser.parse(
             """{"items":[{"id":"muni-42-day","sourceNotificationIds":"user-1,user-2, group:3","isRead":false}]}""",
         )

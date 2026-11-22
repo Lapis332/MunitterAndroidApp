@@ -10,6 +10,13 @@ internal object NotificationIdentity {
     }
 
     fun isUnpersisted(id: String): Boolean = canonical(id) in setOf("user-0", "group-0")
+
+    fun isSnapshotOnlyAggregate(id: String, sources: Set<String>): Boolean =
+        id.startsWith("grouped-muni-") && sources.none { source ->
+            val normalized = canonical(source)
+            (normalized.startsWith("user-") || normalized.startsWith("group-")) &&
+                normalized.substringAfter('-').toLongOrNull()?.let { it > 0 } == true
+        }
 }
 
 internal data class NotificationState(
@@ -75,13 +82,28 @@ internal class NotificationStateCoordinator(
             active.remove(it)
             canceled += it
         }
+        // Older/native-migrated snapshot-only cards have no concrete source
+        // mapping. Retire that presentation, keeping the authoritative summary
+        // and all known source/DM cards. A snapshot token is not an event ID.
+        active.filter { (id, sources) -> NotificationIdentity.isSnapshotOnlyAggregate(id, sources) }
+            .keys.forEach {
+                active.remove(it)
+                canceled += it
+            }
         for (item in items) {
             val id = NotificationIdentity.canonical(item.id)
             val sources = item.sourceNotificationIds.map(NotificationIdentity::canonical).toSet()
-            val matches = active.filter { (activeId, activeSources) ->
+            val matchingRecords = active.filter { (activeId, activeSources) ->
                 NotificationIdentity.canonical(activeId) == id || activeSources.any { it in sources }
-            }.keys
-            val wasActive = matches.isNotEmpty()
+            }
+            val matches = matchingRecords.keys
+            val wasActive = matches.isNotEmpty() || id in before.sourcesById
+            if (!item.isRead && NotificationIdentity.isSnapshotOnlyAggregate(id, sources)) {
+                // The current Web API emits a grouped read-snapshot token as
+                // its sole source. It cannot correlate an FCM user:N event.
+                // Summary-only rendering avoids adding an uncorrelated child.
+                continue
+            }
             for (match in matches) {
                 active.remove(match)
                 if (item.isRead || match != id) canceled += match
@@ -92,7 +114,7 @@ internal class NotificationStateCoordinator(
                 shown += item.copy(id = id, sourceNotificationIds = sources)
                 if (!wasActive) alerts += id
             } else {
-                readSources += sources
+                readSources += sources + matchingRecords.values.flatten()
             }
         }
         // The API filters ordinary rows, aggregates likes, caps history, and
@@ -125,7 +147,10 @@ internal class NotificationStateCoordinator(
             ?: source
         val active = before.sourcesById.toMutableMap()
         val canceled = matches.keys.filter { it != id }.toSet() +
-            before.sourcesById.keys.filter(NotificationIdentity::isUnpersisted)
+            before.sourcesById.keys.filter(NotificationIdentity::isUnpersisted) +
+            before.sourcesById.filter { (activeId, activeSources) ->
+                NotificationIdentity.isSnapshotOnlyAggregate(activeId, activeSources)
+            }.keys
         canceled.forEach(active::remove)
         val sources = matches.values.flatten().toSet() + source
         active[id] = sources

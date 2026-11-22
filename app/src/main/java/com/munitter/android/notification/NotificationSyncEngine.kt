@@ -22,6 +22,7 @@ class NotificationSyncEngine(context: Context) {
 
     suspend fun sync(): NotificationSyncOutcome = withContext(Dispatchers.IO) {
         val ticket = coordinator.beginSync()
+        val session = repository.captureSession()
         val sourcesBefore = coordinator.ordinarySources()
         val seen = mutableSetOf<String>()
         val items = mutableListOf<MunitterNotification>()
@@ -29,8 +30,9 @@ class NotificationSyncEngine(context: Context) {
         var firstPage = true
         var authoritativeUnreadCount: Int? = null
         do {
-            val response = if (firstPage) repository.fetchRefresh() else repository.fetchMore(offset)
+            val response = if (firstPage) repository.fetchRefresh(session) else repository.fetchMore(offset, session)
             currentCoroutineContext().ensureActive()
+            if (!repository.isCurrentSession(session)) return@withContext superseded()
             when (response) {
                 NotificationFetchResult.Unauthorized -> {
                     if (!coordinator.clear(ticket, renderer::publish)) return@withContext superseded()
@@ -60,6 +62,7 @@ class NotificationSyncEngine(context: Context) {
         } while (true)
 
         currentCoroutineContext().ensureActive()
+        if (!repository.isCurrentSession(session)) return@withContext superseded()
         val mutation = coordinator.applyRefresh(ticket, items, authoritativeUnreadCount, renderer::publish)
             ?: return@withContext superseded()
         renderer.updateAvatars(mutation)
