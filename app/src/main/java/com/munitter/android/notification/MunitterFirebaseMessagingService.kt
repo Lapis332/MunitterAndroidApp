@@ -13,7 +13,6 @@ import kotlinx.coroutines.runBlocking
 
 class MunitterFirebaseMessagingService : FirebaseMessagingService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val avatarLoader by lazy { NotificationAvatarLoader(this) }
 
     override fun onNewToken(token: String) {
         if (!isSupportedEnvironment()) return
@@ -31,20 +30,8 @@ class MunitterFirebaseMessagingService : FirebaseMessagingService() {
             Log.w(TAG, "FCM payload ignored: missing notification id")
             return
         }
-        val store = NotificationStateStore(this)
-        val authoritativeUnreadCount = payload.unreadCount.takeIf { payload.hasUnreadCount }
-        val unreadCount = NotificationUnreadCount.resolveForPush(
-            authoritativeUnreadCount,
-            (store.readActiveIds() + payload.notificationId).size,
-        )
-        if (unreadCount == null) {
-            // Pushes may arrive out of order. An older zero must not erase a
-            // newer notification; let the existing worker fetch current state.
-            NotificationSyncScheduler.requestRefresh(this)
-            Log.i(TAG, "FCM zero unread count requested authoritative refresh")
-            return
-        }
-        store.addActiveId(payload.notificationId)
+        val coordinator = NotificationStateStore(this).coordinator
+        val renderer = NotificationRenderer(this, coordinator)
         val notification = MunitterNotification(
             id = payload.notificationId,
             title = payload.title,
@@ -59,48 +46,28 @@ class MunitterFirebaseMessagingService : FirebaseMessagingService() {
             sensitiveMedia = payload.sensitiveMedia,
             mediaPreviewAllowed = payload.mediaPreviewAllowed,
         )
-        val center = MunitterNotificationCenter(this)
-        val avatarSpec = if (payload.mediaPreviewAllowed && !payload.sensitiveMedia) {
-            avatarLoader.specFor(
-                actorUserId = payload.actorUserId,
-                relativeUrl = payload.actorAvatarUrl,
-                version = payload.actorAvatarVersion,
-            )
-        } else {
-            null
+        val mutation = coordinator.applyPush(
+            notification,
+            payload.unreadCount.takeIf { payload.hasUnreadCount },
+            renderer::publish,
+        )
+        // A push is only a hint. Refresh even when its count was nonzero, so a
+        // delayed delivery cannot leave a read event or stale count on screen.
+        NotificationSyncScheduler.requestRefresh(this)
+        if (mutation == null) {
+            Log.i(TAG, "FCM notification requested authoritative refresh without rendering")
+            return
         }
-        val cachedAvatar = avatarSpec?.let(avatarLoader::loadCached)
-        center.show(notification, unreadCount, alert = true, actorAvatar = cachedAvatar)
-        center.updateSummary(unreadCount, cachedAvatar)
         Log.i(
             TAG,
-            "FCM notification displayed id=${payload.notificationId} type=${payload.notificationType} unread=$unreadCount avatar=${if (cachedAvatar != null) "cache" else "fallback"}",
+            "FCM notification displayed id=${mutation.shown.single().id} type=${payload.notificationType} unread=${mutation.unreadCount}",
         )
-        if (avatarSpec != null && cachedAvatar == null) {
-            // FirebaseMessagingService may be destroyed as soon as this
-            // callback returns. Keep the initial notification immediate, but
-            // finish the bounded avatar update before returning so the same
-            // notification ID is reliably updated instead of losing the job.
-            runBlocking {
-                val fetchedAvatar = runCatching { avatarLoader.loadOrFetch(avatarSpec) }
-                    .onFailure { exception ->
-                        Log.w(TAG, "FCM notification avatar update failed actorId=${payload.actorUserId}", exception)
-                    }
-                    .getOrNull()
-                if (fetchedAvatar != null) {
-                    center.show(
-                        notification,
-                        unreadCount,
-                        alert = false,
-                        actorAvatar = fetchedAvatar,
-                    )
-                    center.updateSummary(unreadCount, fetchedAvatar)
-                    Log.i(
-                        TAG,
-                        "FCM notification updated id=${payload.notificationId} actorId=${payload.actorUserId} avatar=network",
-                    )
-                }
-            }
+        // Keep this bounded avatar job alive until Firebase's callback returns.
+        // The shared revision guard prevents a later HTTP read/clear from being
+        // undone when the bitmap arrives.
+        runBlocking {
+            runCatching { renderer.updateAvatars(mutation) }
+                .onFailure { Log.w(TAG, "FCM notification avatar update failed", it) }
         }
     }
 

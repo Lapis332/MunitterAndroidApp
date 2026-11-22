@@ -15,6 +15,7 @@ data class MunitterNotification(
     val actorAvatarVersion: String = "",
     val sensitiveMedia: Boolean = false,
     val mediaPreviewAllowed: Boolean = true,
+    val sourceNotificationIds: Set<String> = setOf(NotificationIdentity.canonical(id)),
 )
 
 data class NotificationPage(
@@ -66,6 +67,13 @@ object NotificationPageParser {
                             .takeUnless { sensitiveMedia }.orEmpty(),
                         sensitiveMedia = sensitiveMedia,
                         mediaPreviewAllowed = !sensitiveMedia,
+                        sourceNotificationIds = item.optString("sourceNotificationIds")
+                            .split(',')
+                            .map(String::trim)
+                            .filter(String::isNotEmpty)
+                            .map(NotificationIdentity::canonical)
+                            .toSet()
+                            .ifEmpty { setOf(NotificationIdentity.canonical(id)) },
                     ),
                 )
             }

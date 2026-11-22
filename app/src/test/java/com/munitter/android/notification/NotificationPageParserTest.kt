@@ -7,6 +7,14 @@ import org.junit.Test
 
 class NotificationPageParserTest {
     @Test
+    fun `grouped HTTP row retains all canonical source IDs for FCM reconciliation`() {
+        val page = NotificationPageParser.parse(
+            """{"items":[{"id":"muni-42-day","sourceNotificationIds":"user-1,user-2, group:3","isRead":false}]}""",
+        )
+        assertEquals(setOf("user-1", "user-2", "group-3"), page.items.single().sourceNotificationIds)
+    }
+
+    @Test
     fun `refresh payload keeps unread state and target URL`() {
         val page = NotificationPageParser.parse(
             """

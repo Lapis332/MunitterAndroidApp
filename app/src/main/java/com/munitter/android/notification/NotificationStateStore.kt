@@ -1,46 +1,34 @@
 package com.munitter.android.notification
 
 import android.content.Context
-import org.json.JSONArray
 
-class NotificationStateStore(context: Context) {
-    private val preferences = context.applicationContext.getSharedPreferences(
-        PREFERENCES,
-        Context.MODE_PRIVATE,
-    )
-
-    @Synchronized
-    fun readActiveIds(): Set<String> {
-        val raw = preferences.getString(ACTIVE_IDS, null) ?: return emptySet()
-        return runCatching {
-            val array = JSONArray(raw)
-            buildSet {
-                for (index in 0 until array.length()) {
-                    array.optString(index).takeIf { it.isNotBlank() }?.let(::add)
-                }
-            }
-        }.getOrDefault(emptySet())
-    }
-
-    @Synchronized
-    fun writeActiveIds(ids: Set<String>) {
-        val array = JSONArray()
-        ids.sorted().forEach(array::put)
-        preferences.edit().putString(ACTIVE_IDS, array.toString()).apply()
-    }
-
-    fun addActiveId(id: String): Set<String> {
-        val next = readActiveIds().toMutableSet().apply { add(id) }
-        writeActiveIds(next)
-        return next
-    }
-
-    fun clear() {
-        preferences.edit().remove(ACTIVE_IDS).apply()
+internal class NotificationStateStore(context: Context) {
+    // These stores are created independently by Activity, WorkManager and FCM.
+    // Their state transitions and native rendering need the same process lock.
+    val coordinator: NotificationStateCoordinator = synchronized(Companion) {
+        sharedCoordinator ?: context.applicationContext.getSharedPreferences(
+            PREFERENCES,
+            Context.MODE_PRIVATE,
+        ).let { preferences ->
+            NotificationStateCoordinator(
+                read = {
+                    NotificationStateCodec.decode(
+                        preferences.getString(STATE, null),
+                        preferences.getString(ACTIVE_IDS, null),
+                    )
+                },
+                write = {
+                    preferences.edit().putString(STATE, NotificationStateCodec.encode(it))
+                        .remove(ACTIVE_IDS).apply()
+                },
+            ).also { sharedCoordinator = it }
+        }
     }
 
     companion object {
         private const val PREFERENCES = "munitter_notifications"
         private const val ACTIVE_IDS = "active_notification_ids"
+        private const val STATE = "active_notification_state_v2"
+        private var sharedCoordinator: NotificationStateCoordinator? = null
     }
 }
