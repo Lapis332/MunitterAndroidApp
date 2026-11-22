@@ -1,9 +1,11 @@
 package com.munitter.android.notification
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.util.Log
+import java.io.IOException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 sealed interface NotificationSyncOutcome {
@@ -15,26 +17,25 @@ sealed interface NotificationSyncOutcome {
 class NotificationSyncEngine(context: Context) {
     private val appContext = context.applicationContext
     private val repository = MunitterNotificationRepository()
-    private val center = MunitterNotificationCenter(appContext)
-    private val stateStore = NotificationStateStore(appContext)
-    private val avatarLoader = NotificationAvatarLoader(appContext)
+    private val coordinator = NotificationStateStore(appContext).coordinator
+    private val renderer = NotificationRenderer(appContext, coordinator)
 
     suspend fun sync(): NotificationSyncOutcome = withContext(Dispatchers.IO) {
-        val activeBefore = stateStore.readActiveIds()
+        val ticket = coordinator.beginSync()
+        val session = repository.captureSession()
+        val sourcesBefore = coordinator.ordinarySources()
         val seen = mutableSetOf<String>()
-        val active = activeBefore.toMutableSet()
+        val items = mutableListOf<MunitterNotification>()
         var offset = 0
-        var hasMore = false
         var firstPage = true
         var authoritativeUnreadCount: Int? = null
-        var latestActorAvatar: Bitmap? = null
-        var response: NotificationFetchResult
-
         do {
-            response = if (firstPage) repository.fetchRefresh() else repository.fetchMore(offset)
+            val response = if (firstPage) repository.fetchRefresh(session) else repository.fetchMore(offset, session)
+            currentCoroutineContext().ensureActive()
+            if (!repository.isCurrentSession(session)) return@withContext superseded()
             when (response) {
                 NotificationFetchResult.Unauthorized -> {
-                    clearStateAndNotifications()
+                    if (!coordinator.clear(ticket, renderer::publish)) return@withContext superseded()
                     return@withContext NotificationSyncOutcome.Unauthorized
                 }
                 is NotificationFetchResult.RetryableFailure -> {
@@ -48,76 +49,26 @@ class NotificationSyncEngine(context: Context) {
                         "Notification sync page items=${page.items.size} unreadCount=${page.unreadCount} hasMore=${page.hasMore}",
                     )
                     if (firstPage) authoritativeUnreadCount = page.unreadCount
-                    if (firstPage &&
-                        NotificationUnreadCount.isAuthoritativelyEmpty(authoritativeUnreadCount)) {
-                        // The notifications page does not contain DM rows, so
-                        // an empty page alone cannot prove that a DM push was
-                        // read. The server-provided aggregate is authoritative
-                        // for clearing every native notification owned by this
-                        // app instance.
-                        Log.i(
-                            MunitterNotificationCenter.TAG,
-                            "Notification sync clearing native state from authoritative unread count",
-                        )
-                        clearStateAndNotifications()
-                        return@withContext NotificationSyncOutcome.Succeeded
-                    }
-                    for (item in page.items) {
-                        seen += item.id
-                        if (item.isRead) {
-                            if (active.remove(item.id)) center.cancel(item.id)
-                        } else {
-                            val isNew = item.id !in activeBefore
-                            active += item.id
-                            val avatarSpec = if (item.mediaPreviewAllowed && !item.sensitiveMedia) {
-                                avatarLoader.specFor(
-                                    actorUserId = item.actorUserId,
-                                    relativeUrl = item.actorAvatarUrl,
-                                    version = item.actorAvatarVersion,
-                                )
-                            } else {
-                                null
-                            }
-                            val cachedAvatar = avatarSpec?.let(avatarLoader::loadCached)
-                            if (cachedAvatar != null) latestActorAvatar = cachedAvatar
-                            center.show(
-                                item,
-                                NotificationUnreadCount.resolve(authoritativeUnreadCount, active.size),
-                                alert = isNew,
-                                actorAvatar = cachedAvatar,
-                            )
-                            if (avatarSpec != null && cachedAvatar == null) {
-                                avatarLoader.loadOrFetch(avatarSpec)?.let { fetchedAvatar ->
-                                    latestActorAvatar = fetchedAvatar
-                                    center.show(
-                                        item,
-                                        NotificationUnreadCount.resolve(authoritativeUnreadCount, active.size),
-                                        alert = false,
-                                        actorAvatar = fetchedAvatar,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    hasMore = page.hasMore
+                    items += page.items
+                    seen += page.items.flatMap { it.sourceNotificationIds }
                     offset += page.items.size
                     firstPage = false
+                    // DMs are omitted from this API. Their IDs must not force
+                    // every foreground refresh to traverse notification history.
+                    if (authoritativeUnreadCount == 0 || !page.hasMore || page.items.isEmpty() ||
+                        sourcesBefore.all { it in seen || NotificationIdentity.isUnpersisted(it) }) break
                 }
             }
-        } while (hasMore && activeBefore.any { it !in seen })
+        } while (true)
 
-        stateStore.writeActiveIds(active)
-        // DM rows are absent from this page, so local IDs cannot replace the
-        // server's aggregate, including after only some messages were read.
-        center.updateSummary(
-            NotificationUnreadCount.resolve(authoritativeUnreadCount, active.size),
-            latestActorAvatar,
-        )
+        currentCoroutineContext().ensureActive()
+        if (!repository.isCurrentSession(session)) return@withContext superseded()
+        val mutation = coordinator.applyRefresh(ticket, items, authoritativeUnreadCount, renderer::publish)
+            ?: return@withContext superseded()
+        renderer.updateAvatars(mutation)
         NotificationSyncOutcome.Succeeded
     }
 
-    private fun clearStateAndNotifications() {
-        stateStore.clear()
-        center.cancelAll()
-    }
+    private fun superseded(): NotificationSyncOutcome =
+        NotificationSyncOutcome.Retryable(IOException("Notification state changed during refresh"))
 }

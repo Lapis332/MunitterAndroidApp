@@ -44,7 +44,6 @@ class MunitterNotificationCenter(context: Context) {
     @SuppressLint("MissingPermission")
     fun show(
         notification: MunitterNotification,
-        unreadCount: Int,
         alert: Boolean,
         actorAvatar: Bitmap? = null,
     ) {
@@ -68,7 +67,9 @@ class MunitterNotificationCenter(context: Context) {
             .setGroup(GROUP_KEY)
             .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
             .setOnlyAlertOnce(true)
-            .setNumber(unreadCount.coerceAtLeast(1))
+            // Each detail card represents one native notification. Only the
+            // group summary carries the server's global unread total.
+            .setNumber(1)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
         applyActorPresentation(builder, notification, actorAvatar)
         if (!alert) builder.setSilent(true)
