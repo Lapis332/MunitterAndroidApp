@@ -12,8 +12,20 @@ import java.util.concurrent.TimeUnit
 
 object NotificationSyncScheduler {
     private const val WORK_NAME = "munitter-notification-sync"
+    internal val badgeHintWorkPolicy = ExistingWorkPolicy.REPLACE
 
     fun requestRefresh(context: Context) {
+        enqueueRefresh(context, ExistingWorkPolicy.KEEP)
+    }
+
+    fun requestBadgeRefresh(context: Context) {
+        // Invalidate before enqueue: an old HTTP result must not commit while
+        // replacement work is waiting for Android's scheduler.
+        NotificationStateStore(context).coordinator.invalidateForRefreshHint()
+        enqueueRefresh(context, badgeHintWorkPolicy)
+    }
+
+    private fun enqueueRefresh(context: Context, policy: ExistingWorkPolicy) {
         val request = OneTimeWorkRequestBuilder<NotificationSyncWorker>()
             .setConstraints(
                 Constraints.Builder()
@@ -23,7 +35,7 @@ object NotificationSyncScheduler {
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork(
             "$WORK_NAME-refresh",
-            ExistingWorkPolicy.KEEP,
+            policy,
             request,
         )
     }

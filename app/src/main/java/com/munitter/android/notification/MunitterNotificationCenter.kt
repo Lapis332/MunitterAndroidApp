@@ -23,6 +23,7 @@ class MunitterNotificationCenter(context: Context) {
     private val appContext = context.applicationContext
     private val notificationManager = NotificationManagerCompat.from(appContext)
     private val preferences = appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+    private val tapProofs = NotificationTapProofStore(appContext).registry
 
     init {
         ensureChannel()
@@ -107,10 +108,12 @@ class MunitterNotificationCenter(context: Context) {
 
     fun cancel(notificationId: String) {
         notificationManager.cancel(NotificationId.from(notificationId))
+        tapProofs.remove(notificationId)
     }
 
     fun cancelAll() {
         notificationManager.cancelAll()
+        tapProofs.clear()
     }
 
     private fun buildTapIntent(notification: MunitterNotification?): Intent {
@@ -121,6 +124,9 @@ class MunitterNotificationCenter(context: Context) {
             data = Uri.parse(BuildConfig.BASE_URL.trimEnd('/') + target)
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(EXTRA_NOTIFICATION_ID, notification?.id)
+            if (notification != null) {
+                tapProofs.issue(notification.id, data.toString())?.let { putExtra(EXTRA_NOTIFICATION_TAP_PROOF, it) }
+            }
         }
     }
 
@@ -164,6 +170,7 @@ class MunitterNotificationCenter(context: Context) {
     companion object {
         const val CHANNEL_ID = "munitter_notifications"
         const val EXTRA_NOTIFICATION_ID = "munitter.notification.id"
+        const val EXTRA_NOTIFICATION_TAP_PROOF = "munitter.notification.tap-proof"
         private const val GROUP_KEY = "munitter.notification.group"
         private const val SUMMARY_ID = 0x4D554E
         private const val PREFERENCES = "munitter_notifications"

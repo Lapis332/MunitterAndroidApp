@@ -18,7 +18,17 @@ data class MunitterPushMessage(
 )
 
 object FcmPayloadParser {
+    // A badge synchronization message is only a refresh hint. Its counts are
+    // never rendered directly: the wire format has no server ordering revision.
+    fun isBadgeSync(data: Map<String, String>): Boolean {
+        val types = listOf("type", "notification_type", "notificationType")
+            .mapNotNull { data[it] }
+        return types.isNotEmpty() && types.all { it == "badge_sync" }
+    }
+
     fun parse(data: Map<String, String>): MunitterPushMessage? {
+        if (listOf("type", "notification_type", "notificationType")
+                .any { data[it].equals("badge_sync", ignoreCase = true) }) return null
         val notificationId = data["notification_id"]?.trim()
             ?.takeIf { it.isNotEmpty() }
             ?: data["notificationId"]?.trim()?.takeIf { it.isNotEmpty() }

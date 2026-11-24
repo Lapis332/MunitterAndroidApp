@@ -24,6 +24,11 @@ class MunitterFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         if (!isSupportedEnvironment()) return
+        if (FcmPayloadParser.isBadgeSync(message.data)) {
+            NotificationSyncScheduler.requestBadgeRefresh(this)
+            NotificationRefreshHints.requestForegroundRefresh()
+            return
+        }
         Log.i(TAG, "FCM message received dataKeys=${message.data.keys.sorted()}")
         val payload = FcmPayloadParser.parse(message.data)
         if (payload == null) {
