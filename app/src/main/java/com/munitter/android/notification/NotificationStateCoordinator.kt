@@ -53,6 +53,9 @@ internal class NotificationStateCoordinator(
     fun beginSync(): NotificationSyncTicket = NotificationSyncTicket(++latestRequest, revision)
 
     @Synchronized
+    fun invalidateForRefreshHint() { latestRequest += 1 }
+
+    @Synchronized
     fun ordinarySources(): Set<String> = read().sourcesById.values.flatten()
         .filter { it.startsWith("user-") || it.startsWith("group-") }.toSet()
 
@@ -161,6 +164,41 @@ internal class NotificationStateCoordinator(
             if (matches.isEmpty()) setOf(id) else emptySet(),
             false,
             publish,
+        )
+    }
+
+    @Synchronized
+    fun applyReadAcknowledgment(
+        ticket: NotificationSyncTicket,
+        acknowledgedIds: Set<String>,
+        authoritativeCount: Int,
+        publish: (NotificationMutation) -> Unit,
+    ): NotificationMutation? {
+        if (!isCurrent(ticket) || authoritativeCount < 0) return null
+        val sources = acknowledgedIds.mapNotNull(NotificationTapPolicy::ordinaryId).toSet()
+        val before = read()
+        if (authoritativeCount == 0) {
+            return commit(
+                NotificationState(unreadCount = 0,
+                    readSources = recentReads(before.readSources + sources + before.sourcesById.values.flatten())),
+                emptySet(), emptyList(), emptySet(), true, publish,
+            )
+        }
+        val active = before.sourcesById.toMutableMap()
+        val canceled = mutableSetOf<String>()
+        for ((id, existingSources) in before.sourcesById) {
+            val remaining = existingSources - sources
+            if (remaining.isEmpty() && existingSources.any { it in sources }) {
+                active.remove(id)
+                canceled += id
+            } else if (remaining != existingSources) {
+                // A grouped card can still represent unrelated unread sources.
+                active[id] = remaining
+            }
+        }
+        return commit(
+            NotificationState(active, authoritativeCount, recentReads(before.readSources + sources)),
+            canceled, emptyList(), emptySet(), false, publish,
         )
     }
 

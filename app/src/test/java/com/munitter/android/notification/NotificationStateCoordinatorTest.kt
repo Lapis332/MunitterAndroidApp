@@ -5,6 +5,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.*
 import org.junit.Test
+import androidx.work.ExistingWorkPolicy
 
 class NotificationStateCoordinatorTest {
     private class Fixture(initial: NotificationState = NotificationState()) {
@@ -24,6 +25,90 @@ class NotificationStateCoordinatorTest {
         fun push(id: String, count: Int? = 1) = coordinator.applyPush(row(id), count, ::publish)
         fun refresh(vararg items: MunitterNotification, count: Int? = 1) =
             coordinator.applyRefresh(coordinator.beginSync(), items.toList(), count, ::publish)
+    }
+
+    @Test
+    fun `badge hint invalidates old http before replacement starts and latest fresh count wins`() {
+        val fixture = Fixture()
+        fixture.push("user:42", 1)
+        val old = fixture.coordinator.beginSync()
+        fixture.coordinator.invalidateForRefreshHint()
+        assertEquals(ExistingWorkPolicy.REPLACE, NotificationSyncScheduler.badgeHintWorkPolicy)
+        assertNull(fixture.coordinator.applyRefresh(old, listOf(row("user-42")), 1, fixture::publish))
+        assertNull(fixture.coordinator.applyReadAcknowledgment(old, setOf("user-42"), 0, fixture::publish))
+        fixture.refresh(count = 0)
+        assertTrue(fixture.nativeIds.isEmpty())
+        assertEquals(0, fixture.badge)
+    }
+
+    @Test
+    fun `coalesced hints and simultaneous foreground worker cannot restore an older count`() {
+        val fixture = Fixture()
+        fixture.push("user:42", 1)
+        val oldWorker = fixture.coordinator.beginSync()
+        fixture.coordinator.invalidateForRefreshHint()
+        val foreground = fixture.coordinator.beginSync()
+        fixture.coordinator.invalidateForRefreshHint()
+        val replacement = fixture.coordinator.beginSync()
+        assertNull(fixture.coordinator.applyRefresh(oldWorker, emptyList(), 1, fixture::publish))
+        assertNull(fixture.coordinator.applyRefresh(foreground, emptyList(), 1, fixture::publish))
+        assertNotNull(fixture.coordinator.applyRefresh(replacement, emptyList(), 0, fixture::publish))
+        assertEquals(0, fixture.badge)
+    }
+
+    @Test
+    fun `owned read proof immediately removes matching aliases and keeps unrelated unread`() {
+        val fixture = Fixture()
+        val received = FcmPayloadParser.parse(mapOf("notification_id" to "user:42", "unread_count" to "2"))!!
+        fixture.push(received.notificationId, 2)
+        fixture.push("group:9", 2)
+        val acknowledged = NotificationReadResponseParser.parse(
+            """{"success":true,"markedCount":0,"acknowledgedNotificationIds":["user:42"],"deviceTotalUnreadCount":1}""", "user-42")!!
+        val mutation = fixture.coordinator.applyReadAcknowledgment(fixture.coordinator.beginSync(),
+            acknowledged.acknowledgedIds, acknowledged.unreadCount, fixture::publish)
+        assertNotNull(mutation)
+        assertEquals(setOf("group-9"), fixture.nativeIds)
+        assertEquals(1, fixture.badge)
+        assertTrue("user-42" in fixture.state.readSources)
+    }
+
+    @Test
+    fun `empty owner acknowledgment cannot remove a card based on marked count`() {
+        val fixture = Fixture()
+        fixture.push("user:42", 2)
+        fixture.coordinator.applyReadAcknowledgment(fixture.coordinator.beginSync(), emptySet(), 2, fixture::publish)
+        assertEquals(setOf("user-42"), fixture.nativeIds)
+        assertEquals(2, fixture.badge)
+    }
+
+    @Test
+    fun `partial grouped proof retains unread sources and global device count`() {
+        val fixture = Fixture(NotificationState(mapOf("aggregate" to setOf("user-1", "user-2")), 3))
+        fixture.coordinator.applyReadAcknowledgment(fixture.coordinator.beginSync(), setOf("user:1"), 2, fixture::publish)
+        assertEquals(setOf("aggregate"), fixture.nativeIds)
+        assertEquals(setOf("user-2"), fixture.state.sourcesById["aggregate"])
+        assertEquals(2, fixture.badge)
+    }
+
+    @Test
+    fun `newer push invalidates old read response and zero cannot erase the new event`() {
+        val fixture = Fixture()
+        fixture.push("user:1")
+        val old = fixture.coordinator.beginSync()
+        fixture.push("user:2", 2)
+        assertNull(fixture.coordinator.applyReadAcknowledgment(old, setOf("user:1"), 0, fixture::publish))
+        assertEquals(setOf("user-1", "user-2"), fixture.nativeIds)
+        assertEquals(2, fixture.badge)
+    }
+
+    @Test
+    fun `confirmed device zero cancels every card and rejects a late avatar`() {
+        val fixture = Fixture()
+        val pushed = fixture.push("user:1")!!
+        fixture.coordinator.applyReadAcknowledgment(fixture.coordinator.beginSync(), setOf("user:1"), 0, fixture::publish)
+        assertTrue(fixture.nativeIds.isEmpty())
+        assertEquals(0, fixture.badge)
+        assertFalse(fixture.coordinator.updateAvatar(pushed, "user-1") { fixture.avatarUpdates += 1 })
     }
 
     @Test

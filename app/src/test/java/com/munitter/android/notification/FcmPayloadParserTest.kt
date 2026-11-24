@@ -2,9 +2,27 @@ package com.munitter.android.notification
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class FcmPayloadParserTest {
+    @Test
+    fun badgeSyncWithoutIdIsHintOnlyAndCannotCreateAnAlert() {
+        val data = mapOf("type" to "badge_sync", "notification_type" to "badge_sync", "unread_count" to "0")
+        assertTrue(FcmPayloadParser.isBadgeSync(data))
+        assertNull(FcmPayloadParser.parse(data))
+        assertNull(FcmPayloadParser.parse(data + mapOf("notification_id" to "user:42", "title" to "ignored")))
+    }
+
+    @Test
+    fun ambiguousBadgeTypeDoesNotOverrideAnOrdinaryMessage() {
+        assertFalse(FcmPayloadParser.isBadgeSync(mapOf("type" to "badge_sync", "notification_type" to "ordinary")))
+        assertNull(FcmPayloadParser.parse(mapOf("type" to "badge_sync", "notification_type" to "ordinary", "notification_id" to "user:42")))
+        assertFalse(FcmPayloadParser.isBadgeSync(mapOf("type" to "BADGE_SYNC")))
+        assertNull(FcmPayloadParser.parse(mapOf("type" to "BADGE_SYNC", "notification_id" to "user:42")))
+    }
+
     @Test
     fun parsesCanonicalPayloadAndUnreadCount() {
         val parsed = FcmPayloadParser.parse(

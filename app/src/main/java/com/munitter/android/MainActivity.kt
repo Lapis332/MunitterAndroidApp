@@ -61,6 +61,12 @@ import com.munitter.android.notification.FcmTokenRegistrar
 import com.munitter.android.notification.FcmTokenStore
 import com.munitter.android.notification.NotificationSyncEngine
 import com.munitter.android.notification.NotificationSyncScheduler
+import com.munitter.android.notification.NotificationRefreshHints
+import com.munitter.android.notification.NotificationReadOutcome
+import com.munitter.android.notification.NotificationTapPolicy
+import com.munitter.android.notification.NotificationTapQueue
+import com.munitter.android.notification.NotificationTapProofStore
+import com.munitter.android.notification.NotificationUnreadStateBridge
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -100,6 +106,10 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     private lateinit var sensitiveMediaSessionBridge: SensitiveMediaSessionBridge
     private lateinit var notificationCenter: MunitterNotificationCenter
     private var notificationSyncJob: Job? = null
+    private var notificationImmediateJob: Job? = null
+    private var notificationReconcileAgain = false
+    private val notificationTapQueue = NotificationTapQueue()
+    private lateinit var notificationUnreadStateBridge: NotificationUnreadStateBridge
     private var pendingNotificationPermissionUrl: String? = null
     private var pendingNotificationPermissionRequest: Runnable? = null
     private var activityCreatedAt = 0L
@@ -166,6 +176,11 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             processSessionId = PROCESS_SENSITIVE_MEDIA_SESSION_ID,
             internalHost = BuildConfig.INTERNAL_HOST,
         )
+        notificationUnreadStateBridge = NotificationUnreadStateBridge(BuildConfig.INTERNAL_HOST) {
+            NotificationSyncScheduler.requestBadgeRefresh(this)
+            requestNotificationReconciliation()
+        }
+        captureNotificationTap(intent)
 
         val externalNavigator = ExternalNavigator(
             activity = this,
@@ -279,6 +294,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
         nativeImageShare.attach(candidate)
         deviceScreenGeometryBridge.attach(candidate)
         sensitiveMediaSessionBridge.attach(candidate)
+        notificationUnreadStateBridge.attach(candidate)
 
         val restored = savedInstanceState
             ?.getBundle(STATE_WEBVIEW)
@@ -307,10 +323,12 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        captureNotificationTap(intent)
         val requested = intent.dataString ?: return
         val decision = navigationPolicy.classify(requested, oauthState.isInProgress)
         if (decision.target == NavigationTarget.INTERNAL) {
             loadUrlWithDebugHeaders(decision.uri.toString())
+            requestNotificationReconciliation()
         }
     }
 
@@ -334,6 +352,9 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     override fun onResume() {
         super.onResume()
         activityResumed = true
+        NotificationRefreshHints.attach(this) {
+            runOnUiThread { requestNotificationReconciliation() }
+        }
         webView?.onResume()
         if (::deviceScreenGeometryBridge.isInitialized) {
             deviceScreenGeometryBridge.onHostResumed()
@@ -347,6 +368,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
 
     override fun onPause() {
         activityResumed = false
+        NotificationRefreshHints.detach(this)
         notificationSyncJob?.cancel()
         notificationSyncJob = null
         CookieManager.getInstance().flush()
@@ -355,6 +377,8 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     }
 
     override fun onDestroy() {
+        NotificationRefreshHints.detach(this)
+        if (::notificationUnreadStateBridge.isInitialized) notificationUnreadStateBridge.detach()
         if (::fullscreen.isInitialized) {
             fullscreen.hide()
         }
@@ -456,6 +480,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     }
 
     override fun onPageFinished(webView: WebView) {
+        notificationUnreadStateBridge.applyToCurrentDocument(webView)
         if (::deviceScreenGeometryBridge.isInitialized) {
             deviceScreenGeometryBridge.onPageFinished(webView)
         }
@@ -500,6 +525,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             FcmRuntimeEnvironment.isSupported(BuildConfig.ENVIRONMENT)) {
             lifecycleScope.launch { FcmTokenRegistrar(this@MainActivity).registerIfPossible() }
         }
+        requestNotificationReconciliation()
     }
 
     private fun releaseNotificationStartupWork(reason: String) {
@@ -529,9 +555,52 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
 
         notificationSyncJob = lifecycleScope.launch {
             while (true) {
-                NotificationSyncEngine(this@MainActivity).sync()
+                requestNotificationReconciliation()
                 delay(FOREGROUND_NOTIFICATION_SYNC_INTERVAL_MS)
             }
+        }
+    }
+
+    private fun captureNotificationTap(intent: android.content.Intent?) {
+        if (intent == null) return
+        val id = NotificationTapPolicy.fromVerifiedIntent(intent.action, intent.dataString,
+            intent.getStringExtra(MunitterNotificationCenter.EXTRA_NOTIFICATION_ID),
+            intent.getStringExtra(MunitterNotificationCenter.EXTRA_NOTIFICATION_TAP_PROOF),
+            BuildConfig.INTERNAL_HOST, NotificationTapProofStore(this).registry)
+        intent.removeExtra(MunitterNotificationCenter.EXTRA_NOTIFICATION_ID)
+        intent.removeExtra(MunitterNotificationCenter.EXTRA_NOTIFICATION_TAP_PROOF)
+        if (id != null) notificationTapQueue.offer(id)
+    }
+
+    private fun requestNotificationReconciliation() {
+        if (!notificationStartupReleased || !activityResumed ||
+            !FcmRuntimeEnvironment.isSupported(BuildConfig.ENVIRONMENT) ||
+            !NotificationTapPolicy.isCurrentOrigin(webView?.url, BuildConfig.INTERNAL_HOST)) return
+        if (notificationImmediateJob?.isActive == true) {
+            notificationReconcileAgain = true
+            return
+        }
+        notificationImmediateJob = lifecycleScope.launch {
+            var cycles = 0
+            do {
+                notificationReconcileAgain = false
+                val engine = NotificationSyncEngine(this@MainActivity)
+                var acknowledged = 0
+                while (acknowledged < 16) {
+                    val id = notificationTapQueue.first() ?: break
+                    val result = engine.acknowledgeRead(id)
+                    if (result != NotificationReadOutcome.Acknowledged && result != NotificationReadOutcome.NotAcknowledged) {
+                        if (result == NotificationReadOutcome.Retryable) notificationReconcileAgain = true
+                        break
+                    }
+                    if (result == NotificationReadOutcome.Acknowledged) notificationTapQueue.complete(id)
+                    else notificationTapQueue.discard(id)
+                    acknowledged += 1
+                }
+                engine.sync()
+                cycles += 1
+            } while (notificationReconcileAgain && activityResumed && cycles < 2)
+            if (notificationReconcileAgain) NotificationSyncScheduler.requestRefresh(this@MainActivity)
         }
     }
 
@@ -560,6 +629,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
     }
 
     override fun onRendererGone(webView: WebView) {
+        notificationUnreadStateBridge.detach()
         navigationHeaderSnapshot = null
         lastVisibleHeaderSnapshot = null
         if (::deviceScreenGeometryBridge.isInitialized) {

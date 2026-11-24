@@ -1,5 +1,47 @@
 # Native notification identity and unread reconciliation
 
+## Notification tap acknowledgment and device badge hints (2026-11-24)
+
+The native shell captures concrete positive user/group notification identities
+from both cold and warm exact-origin notification intents. Automatic
+acknowledgment additionally requires an app-generated
+per-card private PendingIntent capability bound to its exact identity and
+target. An external app's forged/missing proof still permits normal authorized
+navigation but cannot initiate a read. Capabilities live in the existing
+backup-disabled app-private notification preferences, are bounded, and are
+removed when the native card is canceled. Existing old cards without a proof
+remain navigable and gain a proof when ordinary reconciliation republishes them.
+Navigation starts immediately; a separate bounded job acknowledges an ordinary notification using
+the existing authenticated `MarkItemRead` POST and antiforgery endpoint. DM taps
+do not masquerade as ordinary notification reads. A successful response must
+explicitly acknowledge the requested owned identity, including already-read
+rows; `markedCount` alone is not read proof. Only confirmed sources are removed,
+and a grouped card retains unrelated unread sources. Session changes, newer
+pushes/refreshes and late avatar completions retain their existing fences.
+
+The notifications-page total belongs to the selected account. Launcher counts
+instead use `deviceTotalUnreadCount` from the existing authenticated
+`/api/realtime/ui-state`; a failure never falls back to an active-account zero.
+The acknowledgment response uses the same device aggregate. No cookie, token,
+notification body or server response is logged by the added request path.
+
+An explicit `badge_sync` FCM message is a hint rather than an ordinary event. It
+requires no synthetic notification identity, title, body or alert. Its supplied
+count is not applied because the current wire format has no server ordering
+revision. It requests a foreground authenticated reconciliation and the existing
+bounded background worker. Badge hints invalidate older in-flight HTTP tickets
+before replacing the existing unique refresh work, so a KEEP/coalescing window
+cannot discard the last hint and let an older count commit. Ordinary scheduled
+refreshes retain their existing KEEP policy. The exact-origin main-frame Web bridge accepts only
+a fixed hint after `munitter:unread-state-changed`, and ignores JavaScript counts.
+Periodic/background scheduling and launcher rendering remain OS-controlled;
+these paths do not promise delivery under force-stop, offline or battery limits.
+
+Local parser, intent, owned-read, session, stale-response and synthetic HTTP
+tests cover the new contract. Build/test/lint results and private Development
+APK installation are separate release evidence; preparation does not claim
+physical-device badge reception or authorize store publication/provider changes.
+
 FCM and the authenticated notifications page describe the same ordinary events
 with different identifiers: `user:42` / `group:17` in FCM and `user-42` /
 `group-17` in HTTP. The modern grouped-like loader instead emits a grouped
