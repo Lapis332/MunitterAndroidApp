@@ -6,6 +6,7 @@ import java.io.BufferedInputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.util.zip.GZIPInputStream
 import org.json.JSONArray
 import org.json.JSONObject
@@ -18,6 +19,7 @@ sealed interface NotificationFetchResult {
 
 internal sealed interface NotificationReadResult {
     data class Acknowledged(val value: NotificationReadAcknowledgment) : NotificationReadResult
+    data object NotAcknowledged : NotificationReadResult
     data object Unauthorized : NotificationReadResult
     data object RetryableFailure : NotificationReadResult
 }
@@ -57,6 +59,12 @@ internal class MunitterNotificationRepository(
 
     fun acknowledgeRead(id: String, session: NotificationRequestSession): NotificationReadResult {
         val canonical = NotificationTapPolicy.ordinaryId(id) ?: return NotificationReadResult.RetryableFailure
+        return acknowledgeRead(NotificationTapRequest(canonical), session)
+    }
+
+    fun acknowledgeRead(tap: NotificationTapRequest, session: NotificationRequestSession): NotificationReadResult {
+        val validated = NotificationTapPolicy.validatedRequest(tap) ?: return NotificationReadResult.RetryableFailure
+        val canonical = validated.id
         val cookie = session.cookie ?: return NotificationReadResult.Unauthorized
         if (!isCurrentSession(session)) return NotificationReadResult.RetryableFailure
         val csrf = request("api/security/antiforgery", cookie) ?: return NotificationReadResult.RetryableFailure
@@ -67,12 +75,17 @@ internal class MunitterNotificationRepository(
             ?: return NotificationReadResult.RetryableFailure
         val requestCookie = NotificationAntiforgeryCookie.merge(cookie, csrf.setCookies)
             ?: return NotificationReadResult.RetryableFailure
-        val body = JSONObject().put("notificationIds", JSONArray().put(canonical)).toString()
+        val dm = NotificationTapPolicy.dmIdentity(canonical)
+        val endpoint = if (dm == null) "Notifications?handler=MarkItemRead"
+            else "dm/${validated.dmPeerUserId}?handler=MarkRead"
+        val body = if (dm == null) JSONObject().put("notificationIds", JSONArray().put(canonical)).toString()
+            else "latestMessageId=${dm.messageId}&notificationId=${URLEncoder.encode(canonical, Charsets.UTF_8.name())}"
         if (!isCurrentSession(session)) return NotificationReadResult.RetryableFailure
-        val response = request("Notifications?handler=MarkItemRead", requestCookie, body, token)
+        val response = request(endpoint, requestCookie, body, token, formEncoded = dm != null)
             ?: return NotificationReadResult.RetryableFailure
         if (!isCurrentSession(session)) return NotificationReadResult.RetryableFailure
         if (response.status == 401 || response.status == 403) return NotificationReadResult.Unauthorized
+        if (response.status == 400 || response.status == 404) return NotificationReadResult.NotAcknowledged
         if (response.status != 200) return NotificationReadResult.RetryableFailure
         val acknowledgment = NotificationReadResponseParser.parse(response.body, canonical)
             ?: return NotificationReadResult.RetryableFailure
@@ -81,7 +94,8 @@ internal class MunitterNotificationRepository(
 
     private data class Response(val status: Int, val body: String, val setCookies: List<String>)
 
-    private fun request(path: String, cookie: String, body: String? = null, csrfToken: String? = null): Response? {
+    private fun request(path: String, cookie: String, body: String? = null, csrfToken: String? = null,
+        formEncoded: Boolean = false): Response? {
         val connection = runCatching {
             openConnection(URL(BuildConfig.BASE_URL.trimEnd('/') + "/" + path))
         }.getOrNull() ?: return null
@@ -99,7 +113,8 @@ internal class MunitterNotificationRepository(
             }
             if (body != null) {
                 connection.doOutput = true
-                connection.setRequestProperty("Content-Type", "application/json")
+                connection.setRequestProperty("Content-Type",
+                    if (formEncoded) "application/x-www-form-urlencoded" else "application/json")
                 connection.setRequestProperty("X-CSRF-TOKEN", csrfToken)
                 connection.outputStream.bufferedWriter(Charsets.UTF_8).use { it.write(body) }
             }

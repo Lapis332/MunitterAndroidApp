@@ -175,7 +175,8 @@ internal class NotificationStateCoordinator(
         publish: (NotificationMutation) -> Unit,
     ): NotificationMutation? {
         if (!isCurrent(ticket) || authoritativeCount < 0) return null
-        val sources = acknowledgedIds.mapNotNull(NotificationTapPolicy::ordinaryId).toSet()
+        val sources = acknowledgedIds.mapNotNull(NotificationTapPolicy::concreteId).toSet()
+        if (sources.isEmpty()) return null
         val before = read()
         if (authoritativeCount == 0) {
             return commit(

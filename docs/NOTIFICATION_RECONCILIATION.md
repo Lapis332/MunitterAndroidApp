@@ -1,5 +1,35 @@
 # Native notification identity and unread reconciliation
 
+## DM tap acknowledgment (0.1.2 / code 3)
+
+DM FCM identities have the concrete form `dm:<message>:<recipient>`. They are
+not ordinary Notifications-page row IDs. A same-origin app-generated capability
+must bind that exact identity and the exact `/dm/<peer>` target before a cold or
+warm tap can enqueue a read. The bounded queue retains that peer; an exported
+Intent, a count-only Web hint, an invalid peer or an ID without a capability
+cannot manufacture a DM read request. Screen navigation remains independent.
+
+The native request reuses the existing authenticated, CSRF-protected
+`POST /dm/<peer>?handler=MarkRead` form handler with `latestMessageId` and
+`notificationId`. The server must validate the encoded recipient against the
+current session before mutation, confirm the visible incoming message belongs
+to the accessible conversation, and return that exact canonical identity in
+`acknowledgedNotificationIds` only after confirming the persisted read boundary.
+Native cancellation additionally requires fresh `deviceTotalUnreadCount`.
+Legacy success or boundary-only responses do not acknowledge a notification.
+An explicit read-handler 400/404 rejects only that queued attempt and cannot
+cancel its card or apply an error response's count. Later valid taps continue,
+and the rejected ID may be tapped again after an account change. Network, 429
+and server failures remain retryable; 401/403 retain authentication handling.
+
+Only confirmed DM sources are removed while unrelated ordinary notifications,
+another account's notifications and newer DM messages remain. Confirmed read
+sources reject delayed FCM/avatar replay. Missing DM rows in a Notifications
+refresh remain insufficient evidence of a read. The same cookie/session,
+newer-request and newer-push fences apply. Provider configuration, Firebase
+client files, signing keys, permissions and store publication are unchanged.
+Local gates and physical-device acceptance are separate release evidence.
+
 ## Notification tap acknowledgment and device badge hints (2026-11-24)
 
 The native shell captures concrete positive user/group notification identities

@@ -17,6 +17,37 @@ class NotificationTapProofTest {
     private val action = "android.intent.action.VIEW"
 
     @Test
+    fun `dm capability survives restart but binds recipient message and exact peer target`() {
+        val fixture = Fixture()
+        val target = "https://dev.munitter.com/dm/9"
+        val proof = fixture.registry().issue("dm:19:7", target)!!
+        val restarted = fixture.registry()
+        assertEquals(proof, restarted.issue("dm:19:7", target))
+        assertEquals(NotificationTapRequest("dm:19:7", 9), NotificationTapPolicy.requestFromVerifiedIntent(
+            action, target, "dm:19:7", proof, "dev.munitter.com", restarted))
+        for (id in listOf("dm:19:8", "dm:20:7")) {
+            assertNull(NotificationTapPolicy.requestFromVerifiedIntent(action, target, id, proof, "dev.munitter.com", restarted))
+        }
+        assertNull(NotificationTapPolicy.requestFromVerifiedIntent(action, "https://dev.munitter.com/dm/10",
+            "dm:19:7", proof, "dev.munitter.com", restarted))
+        restarted.remove("dm:19:7")
+        assertFalse(restarted.trusts("dm:19:7", target, proof))
+    }
+
+    @Test
+    fun `exported dm intent cannot acknowledge without app capability or with invalid peer path`() {
+        val registry = Fixture().registry()
+        val target = "https://dev.munitter.com/dm/9"
+        assertNull(NotificationTapPolicy.requestFromVerifiedIntent(action, target, "dm:19:7", null,
+            "dev.munitter.com", registry))
+        assertNull(NotificationTapPolicy.requestFromVerifiedIntent(action, target, "dm:19:7",
+            "00000000-0000-0000-0000-000000000001", "dev.munitter.com", registry))
+        for (path in listOf("/post/9", "/dm/0", "/dm/2147483648", "/dm/9?peer=10")) {
+            assertNull(registry.issue("dm:19:7", "https://dev.munitter.com$path"))
+        }
+    }
+
+    @Test
     fun `same origin and arbitrary exported intent id are not read authority`() {
         val registry = Fixture().registry()
         assertEquals("user-42", NotificationTapPolicy.fromIntent(action, url, "user:42", "dev.munitter.com"))

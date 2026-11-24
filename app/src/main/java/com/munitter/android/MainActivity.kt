@@ -563,13 +563,13 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
 
     private fun captureNotificationTap(intent: android.content.Intent?) {
         if (intent == null) return
-        val id = NotificationTapPolicy.fromVerifiedIntent(intent.action, intent.dataString,
+        val request = NotificationTapPolicy.requestFromVerifiedIntent(intent.action, intent.dataString,
             intent.getStringExtra(MunitterNotificationCenter.EXTRA_NOTIFICATION_ID),
             intent.getStringExtra(MunitterNotificationCenter.EXTRA_NOTIFICATION_TAP_PROOF),
             BuildConfig.INTERNAL_HOST, NotificationTapProofStore(this).registry)
         intent.removeExtra(MunitterNotificationCenter.EXTRA_NOTIFICATION_ID)
         intent.removeExtra(MunitterNotificationCenter.EXTRA_NOTIFICATION_TAP_PROOF)
-        if (id != null) notificationTapQueue.offer(id)
+        if (request != null) notificationTapQueue.offer(request)
     }
 
     private fun requestNotificationReconciliation() {
@@ -587,14 +587,14 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
                 val engine = NotificationSyncEngine(this@MainActivity)
                 var acknowledged = 0
                 while (acknowledged < 16) {
-                    val id = notificationTapQueue.first() ?: break
-                    val result = engine.acknowledgeRead(id)
+                    val request = notificationTapQueue.firstRequest() ?: break
+                    val result = engine.acknowledgeRead(request)
                     if (result != NotificationReadOutcome.Acknowledged && result != NotificationReadOutcome.NotAcknowledged) {
                         if (result == NotificationReadOutcome.Retryable) notificationReconcileAgain = true
                         break
                     }
-                    if (result == NotificationReadOutcome.Acknowledged) notificationTapQueue.complete(id)
-                    else notificationTapQueue.discard(id)
+                    if (result == NotificationReadOutcome.Acknowledged) notificationTapQueue.complete(request.id)
+                    else notificationTapQueue.discard(request.id)
                     acknowledged += 1
                 }
                 engine.sync()

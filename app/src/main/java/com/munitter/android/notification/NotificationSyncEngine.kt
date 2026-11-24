@@ -86,20 +86,21 @@ class NotificationSyncEngine(context: Context) {
         NotificationSyncOutcome.Succeeded
     }
 
-    internal suspend fun acknowledgeRead(id: String): NotificationReadOutcome = withContext(Dispatchers.IO) {
+    internal suspend fun acknowledgeRead(request: NotificationTapRequest): NotificationReadOutcome = withContext(Dispatchers.IO) {
         val ticket = coordinator.beginSync()
         val session = repository.captureSession()
-        val response = repository.acknowledgeRead(id, session)
+        val response = repository.acknowledgeRead(request, session)
         currentCoroutineContext().ensureActive()
         if (!repository.isCurrentSession(session)) return@withContext NotificationReadOutcome.Retryable
         when (response) {
             NotificationReadResult.Unauthorized -> NotificationReadOutcome.Unauthorized
+            NotificationReadResult.NotAcknowledged -> NotificationReadOutcome.NotAcknowledged
             NotificationReadResult.RetryableFailure -> NotificationReadOutcome.Retryable
             is NotificationReadResult.Acknowledged -> {
+                if (response.value.acknowledgedIds.isEmpty()) return@withContext NotificationReadOutcome.NotAcknowledged
                 coordinator.applyReadAcknowledgment(ticket, response.value.acknowledgedIds,
                     response.value.unreadCount, renderer::publish) ?: return@withContext NotificationReadOutcome.Retryable
-                if (response.value.acknowledgedIds.isEmpty()) NotificationReadOutcome.NotAcknowledged
-                else NotificationReadOutcome.Acknowledged
+                NotificationReadOutcome.Acknowledged
             }
         }
     }
