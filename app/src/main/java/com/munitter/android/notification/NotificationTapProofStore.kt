@@ -17,8 +17,8 @@ internal class NotificationTapProofRegistry(
 ) {
     @Synchronized
     fun issue(id: String, targetUrl: String): String? {
-        val canonical = NotificationTapPolicy.ordinaryId(id) ?: return null
-        if (!safeTarget(targetUrl)) return null
+        val canonical = NotificationTapPolicy.concreteId(id) ?: return null
+        if (!safeTarget(canonical, targetUrl)) return null
         val before = read()
         before[canonical]?.takeIf { it.targetUrl == targetUrl && NONCE.matches(it.nonce) }
             ?.let { return it.nonce }
@@ -32,8 +32,8 @@ internal class NotificationTapProofRegistry(
 
     @Synchronized
     fun trusts(id: String, targetUrl: String?, nonce: String?): Boolean {
-        val canonical = NotificationTapPolicy.ordinaryId(id) ?: return false
-        if (targetUrl == null || !safeTarget(targetUrl) || nonce == null || !NONCE.matches(nonce)) return false
+        val canonical = NotificationTapPolicy.concreteId(id) ?: return false
+        if (targetUrl == null || !safeTarget(canonical, targetUrl) || nonce == null || !NONCE.matches(nonce)) return false
         val expected = read()[canonical] ?: return false
         return expected.targetUrl == targetUrl && MessageDigest.isEqual(
             expected.nonce.toByteArray(Charsets.UTF_8), nonce.toByteArray(Charsets.UTF_8))
@@ -41,7 +41,7 @@ internal class NotificationTapProofRegistry(
 
     @Synchronized
     fun remove(id: String) {
-        val canonical = NotificationTapPolicy.ordinaryId(id) ?: return
+        val canonical = NotificationTapPolicy.concreteId(id) ?: return
         val next = LinkedHashMap(read())
         if (next.remove(canonical) != null) write(next)
     }
@@ -49,8 +49,8 @@ internal class NotificationTapProofRegistry(
     @Synchronized
     fun clear() { write(emptyMap()) }
 
-    private fun safeTarget(target: String): Boolean = target.length <= 4096 &&
-        NotificationTapPolicy.isCurrentOrigin(target, internalHost)
+    private fun safeTarget(id: String, target: String): Boolean =
+        NotificationTapPolicy.requestForTarget(id, target, internalHost) != null
 
     companion object {
         const val MAX_RECORDS = 512
@@ -73,7 +73,7 @@ internal class NotificationTapProofStore(context: Context) {
                             else buildMap {
                                 for (index in 0 until array.length()) {
                                     val row = array.optJSONObject(index) ?: continue
-                                    val id = NotificationTapPolicy.ordinaryId(row.optString("id")) ?: continue
+                                    val id = NotificationTapPolicy.concreteId(row.optString("id")) ?: continue
                                     put(id, NotificationTapProof(row.optString("target"), row.optString("nonce")))
                                 }
                             }

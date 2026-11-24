@@ -28,6 +28,68 @@ class NotificationStateCoordinatorTest {
     }
 
     @Test
+    fun `exact dm read proof removes only opened message keeping other account and newer dm unread`() {
+        val fixture = Fixture()
+        fixture.push("dm:19:7", 3)
+        fixture.push("dm:20:7", 3)
+        fixture.push("user:42", 3)
+        val ack = NotificationReadResponseParser.parse(
+            """{"success":true,"acknowledgedNotificationIds":["dm:19:7"],"deviceTotalUnreadCount":2}""", "dm:19:7")!!
+        assertNotNull(fixture.coordinator.applyReadAcknowledgment(fixture.coordinator.beginSync(),
+            ack.acknowledgedIds, ack.unreadCount, fixture::publish))
+        assertEquals(setOf("dm:20:7", "user-42"), fixture.nativeIds)
+        assertEquals(2, fixture.badge)
+        assertTrue("dm:19:7" in fixture.state.readSources)
+    }
+
+    @Test
+    fun `confirmed dm read suppresses delayed same push and avatar but allows next message`() {
+        val fixture = Fixture()
+        val prior = fixture.push("dm:19:7", 2)!!
+        fixture.push("user:42", 2)
+        fixture.coordinator.applyReadAcknowledgment(fixture.coordinator.beginSync(), setOf("dm:19:7"), 1, fixture::publish)
+        assertNull(fixture.push("dm:19:7", 2))
+        assertFalse(fixture.coordinator.updateAvatar(prior, "dm:19:7") { fixture.avatarUpdates += 1 })
+        assertNotNull(fixture.push("dm:20:7", 2))
+        assertEquals(setOf("user-42", "dm:20:7"), fixture.nativeIds)
+    }
+
+    @Test
+    fun `new dm push prevents an older read response zero from clearing newer cards`() {
+        val fixture = Fixture()
+        fixture.push("dm:19:7", 1)
+        val old = fixture.coordinator.beginSync()
+        fixture.push("dm:20:7", 2)
+        assertNull(fixture.coordinator.applyReadAcknowledgment(old, setOf("dm:19:7"), 0, fixture::publish))
+        assertEquals(setOf("dm:19:7", "dm:20:7"), fixture.nativeIds)
+        assertEquals(2, fixture.badge)
+    }
+
+    @Test
+    fun `unacknowledged dm with other unread is retained despite successful refresh`() {
+        val fixture = Fixture()
+        fixture.push("dm:19:7", 2)
+        fixture.push("group:9", 2)
+        fixture.coordinator.applyReadAcknowledgment(fixture.coordinator.beginSync(), emptySet(), 2, fixture::publish)
+        fixture.refresh(count = 1)
+        assertEquals(setOf("dm:19:7", "group-9"), fixture.nativeIds)
+        assertEquals(1, fixture.badge)
+    }
+
+    @Test
+    fun `empty owner ack cannot clear dm cards using its response zero`() {
+        val fixture = Fixture()
+        fixture.push("dm:19:7", 2)
+        fixture.push("user:42", 2)
+        assertNull(fixture.coordinator.applyReadAcknowledgment(fixture.coordinator.beginSync(), emptySet(), 0, fixture::publish))
+        assertEquals(setOf("dm:19:7", "user-42"), fixture.nativeIds)
+        assertEquals(2, fixture.badge)
+        fixture.refresh(count = 0)
+        assertTrue(fixture.nativeIds.isEmpty())
+        assertEquals(0, fixture.badge)
+    }
+
+    @Test
     fun `badge hint invalidates old http before replacement starts and latest fresh count wins`() {
         val fixture = Fixture()
         fixture.push("user:42", 1)
