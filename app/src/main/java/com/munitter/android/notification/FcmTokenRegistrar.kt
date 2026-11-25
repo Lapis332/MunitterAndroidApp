@@ -17,14 +17,16 @@ class FcmTokenRegistrar(context: Context) {
 
     suspend fun registerIfPossible(): Boolean = withContext(Dispatchers.IO) {
         val serverEnvironment = serverEnvironment() ?: return@withContext false
-        val token = store.read() ?: return@withContext false
+        val snapshot = store.snapshot() ?: return@withContext false
         val cookie = runCatching {
             CookieManager.getInstance().getCookie(BuildConfig.BASE_URL)
         }.getOrNull()
         if (cookie.isNullOrBlank()) return@withContext false
         var antiForgeryToken = store.antiForgeryToken() ?: fetchAntiForgeryToken(cookie)
             ?: return@withContext false
-        var status = postRegistration(token, cookie, antiForgeryToken, serverEnvironment)
+        if (!store.isCurrent(snapshot)) return@withContext false
+        var status = postRegistration(snapshot, cookie, antiForgeryToken, serverEnvironment)
+        if (!store.isCurrent(snapshot)) return@withContext false
         if (status == HttpURLConnection.HTTP_BAD_REQUEST) {
             // The antiforgery token is session-bound. Refresh it once after a
             // server-side key/session rotation instead of retrying a stale value.
@@ -33,17 +35,19 @@ class FcmTokenRegistrar(context: Context) {
                 CookieManager.getInstance().getCookie(BuildConfig.BASE_URL)
             }.getOrNull() ?: cookie
             antiForgeryToken = fetchAntiForgeryToken(refreshedCookie) ?: return@withContext false
-            status = postRegistration(token, refreshedCookie, antiForgeryToken, serverEnvironment)
+            if (!store.isCurrent(snapshot)) return@withContext false
+            status = postRegistration(snapshot, refreshedCookie, antiForgeryToken, serverEnvironment)
         }
 
+        if (!store.isCurrent(snapshot)) return@withContext false
         if (status in 200..299) {
-            store.markRegistered(token)
+            if (!store.markRegistered(snapshot)) return@withContext false
             Log.i(TAG, "FCM token server registration succeeded status=$status")
             true
         } else {
             if (status == HttpURLConnection.HTTP_UNAUTHORIZED ||
                 status == HttpURLConnection.HTTP_FORBIDDEN) {
-                store.clearRegistered()
+                store.clearRegistered(snapshot)
             }
             Log.w(TAG, "FCM token server registration rejected status=$status")
             false
@@ -51,7 +55,7 @@ class FcmTokenRegistrar(context: Context) {
     }
 
     private fun postRegistration(
-        token: String,
+        snapshot: FcmTokenSnapshot,
         cookie: String,
         antiForgeryToken: String,
         serverEnvironment: String,
@@ -75,15 +79,19 @@ class FcmTokenRegistrar(context: Context) {
                     BuildConfig.DEVELOPMENT_DEBUG_CLIENT_HEADER,
                 )
             }
-            OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { writer ->
-                writer.write(
-                    JSONObject()
-                        .put("token", token)
-                        .put("platform", "Android")
-                        .put("environment", serverEnvironment)
-                        .put("applicationId", appContext.packageName)
-                        .toString(),
-                )
+            connection.outputStream.use { output ->
+                // Opening the connection may block while an SDK refresh arrives.
+                if (!store.isCurrent(snapshot)) return -1
+                OutputStreamWriter(output, Charsets.UTF_8).use { writer ->
+                    writer.write(
+                        JSONObject()
+                            .put("token", snapshot.token)
+                            .put("platform", "Android")
+                            .put("environment", serverEnvironment)
+                            .put("applicationId", appContext.packageName)
+                            .toString(),
+                    )
+                }
             }
             connection.responseCode
         } catch (exception: Exception) {
