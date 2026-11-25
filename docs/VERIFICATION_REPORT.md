@@ -77,3 +77,13 @@ Turnstileの補助的DNS失敗とPAT 401、CSP Report-Only / WebGL由来のnoise
 Android側はCookie、token、認証header、署名URL、投稿内容をログへ出すコードを持たない。`local.properties`、build生成物、keystore、署名設定、秘密設定はGit除外対象である。
 
 既存Webリポジトリのファイル、dirty変更、stash、プロセス、Tunnel、DB、Redis、R2は変更していない。Development runtimeの不一致は観測結果としてのみ記録した。
+
+## 2026-11-25: Development FCMキャッシュの登録競合
+
+ベース `1a3fbfcff64f805d388f07e3ce347e7b369af0f5` に対し、DevelopmentのFCMキャッシュをコンパイル時とSDK実値のFirebaseプロジェクト・アプリ・sender・packageへ結び付けた。旧キャッシュの移行と非同期SDK callback・HTTP登録結果の競合を16件のテストで確認した。
+
+- `testDevelopmentDebugUnitTest`、`testDevelopmentReleaseUnitTest`、`testProductionReleaseUnitTest`: 各209件、合計627件すべて成功。失敗・エラー・skipは0件。新しい16件は3条件すべてで実行した。
+- `lintDevelopmentDebug`: 成功、Error/Fatalは0件。
+- 既存のTemurin 21.0.13+9、Android Platform 36、Build Tools 36.0.0、Gradle 8.13のキャッシュを使用し、`--offline --no-daemon --max-workers=1` で実行した。
+
+この確認はソースのコンパイル・JVMテスト・Lintの結果である。今回の署名済みAPKの生成・インストール、Firebaseプロジェクトや資格情報の変更、providerへの送信、閉じた端末への実配送は未実施。

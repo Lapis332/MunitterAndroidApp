@@ -17,7 +17,8 @@ class MunitterFirebaseMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         if (!isSupportedEnvironment()) return
         val store = FcmTokenStore(this)
-        store.save(token)
+        val binding = store.captureBinding() ?: return
+        if (!store.save(token, binding)) return
         Log.i(TAG, "FCM token updated tokenHash=${tokenHash(token)}")
         scope.launch { FcmTokenRegistrar(this@MunitterFirebaseMessagingService).registerIfPossible() }
     }

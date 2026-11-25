@@ -606,6 +606,8 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
 
     private fun initializeFcm() {
         if (!FcmRuntimeEnvironment.isSupported(BuildConfig.ENVIRONMENT)) return
+        val store = FcmTokenStore(this)
+        val lookup = store.captureLookup() ?: return
         FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
             if (!task.isSuccessful) {
                 android.util.Log.w(TAG, "FCM token retrieval failed", task.exception)
@@ -613,7 +615,7 @@ class MainActivity : ComponentActivity(), MunitterWebViewClient.Callbacks {
             }
             val token = task.result?.trim().orEmpty()
             if (token.isBlank()) return@addOnCompleteListener
-            FcmTokenStore(this).save(token)
+            if (!store.publishLookup(token, lookup)) return@addOnCompleteListener
             android.util.Log.i(TAG, "FCM token retrieved tokenHash=${token.hashCode().toUInt().toString(16)}")
             lifecycleScope.launch { FcmTokenRegistrar(this@MainActivity).registerIfPossible() }
         }
